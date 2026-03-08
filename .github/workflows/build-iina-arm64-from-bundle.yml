@@ -1,0 +1,183 @@
+name: Build IINA arm64 from custom libmpv bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_repo:
+        description: 'Repository that publishes the libmpv bundle release'
+        required: true
+        type: string
+        default: 'nilaoda/mpv-iina-avs'
+      bundle_tag:
+        description: 'Release tag containing the libmpv bundle'
+        required: true
+        type: string
+        default: 'mpv-iina-avs-ffmpeg-7.1.3-mpv-v0.40.0-20260308-182913'
+      bundle_asset:
+        description: 'Bundle asset filename to download from the release'
+        required: true
+        type: string
+        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-7.1.3-mpv-v0.40.0.zip'
+      publish_release:
+        description: 'Publish the packaged IINA app to GitHub Releases'
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag to publish to (leave empty to auto-generate when publishing)'
+        required: false
+        type: string
+
+jobs:
+  build-arm64:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare custom dependencies
+        env:
+          BUNDLE_REPO: ${{ inputs.bundle_repo }}
+          BUNDLE_TAG: ${{ inputs.bundle_tag }}
+          BUNDLE_ASSET: ${{ inputs.bundle_asset }}
+          DYLIBS_DOWNLOAD_PATH: https://iina.io/dylibs/arm64
+          YT_DLP_DOWNLOAD_URL: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+        run: |
+          set -euo pipefail
+          mkdir -p deps/lib deps/executable "$RUNNER_TEMP/custom-bundle"
+
+          while IFS= read -r file; do
+            [[ -n "$file" ]] || continue
+            curl -fL "$DYLIBS_DOWNLOAD_PATH/$file" -o "deps/lib/$file"
+          done < <(curl -fL "$DYLIBS_DOWNLOAD_PATH/filelist.txt")
+
+          curl -fL "$YT_DLP_DOWNLOAD_URL" -o deps/executable/youtube-dl
+          chmod +x deps/executable/youtube-dl
+
+          bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
+          echo "Downloading bundle: $bundle_url"
+          curl -fL "$bundle_url" -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET"
+          unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d deps/lib
+
+          ln -sfn libplacebo.360.dylib deps/lib/libplacebo.338.dylib
+          ln -sfn librubberband.3.dylib deps/lib/librubberband.2.dylib
+
+          echo "Installed dylibs:"
+          find deps/lib -maxdepth 1 -name '*.dylib' | sort
+
+      - name: Patch project for arm64 dylib set
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          from pathlib import Path
+
+          path = Path('iina.xcodeproj/project.pbxproj')
+          text = path.read_text()
+          for needle in [
+              '		518376DD2C23DD2300574F00 /* libgcc_s.1.1.dylib in Copy Dylibs */ = {isa = PBXBuildFile; fileRef = 518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };\n',
+              '		518376DE2C23DD2300574F00 /* libstdc++.6.dylib in Copy Dylibs */ = {isa = PBXBuildFile; fileRef = 518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };\n',
+              '				518376DD2C23DD2300574F00 /* libgcc_s.1.1.dylib in Copy Dylibs */,\n',
+              '				518376DE2C23DD2300574F00 /* libstdc++.6.dylib in Copy Dylibs */,\n',
+              '		518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libgcc_s.1.1.dylib; path = deps/lib/libgcc_s.1.1.dylib; sourceTree = "<group>"; };\n',
+              '		518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.6.dylib"; path = "deps/lib/libstdc++.6.dylib"; sourceTree = "<group>"; };\n',
+              '				518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */,\n',
+              '				518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */,\n',
+          ]:
+              text = text.replace(needle, '')
+          path.write_text(text)
+          print('patched', path)
+          PY2
+
+      - name: Build IINA (arm64)
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          rm -rf "$DERIVED_DATA"
+          xcodebuild \
+            -project iina.xcodeproj \
+            -scheme iina \
+            -configuration Nightly \
+            -derivedDataPath "$DERIVED_DATA" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            build
+
+      - name: Compute packaging metadata
+        id: package_meta
+        env:
+          BUNDLE_TAG: ${{ inputs.bundle_tag }}
+          BUNDLE_ASSET: ${{ inputs.bundle_asset }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          bundle_slug="$(printf '%s' "$BUNDLE_TAG" | tr '/ :' '---')"
+          asset_stub="${BUNDLE_ASSET%.zip}"
+          archive_name="IINA-arm64-${asset_stub}.tar.xz"
+          artifact_name="IINA-arm64-${asset_stub}"
+          if [[ -n "$INPUT_TAG" ]]; then
+            release_tag="$INPUT_TAG"
+          else
+            release_tag="iina-arm64-${bundle_slug}-$(date -u +%Y%m%d-%H%M%S)"
+          fi
+          release_name="IINA arm64 from ${asset_stub}"
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "ARCHIVE_PATH=${{ runner.temp }}/$archive_name" >> "$GITHUB_ENV"
+
+      - name: Sync extra dylibs into app bundle
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_FRAMEWORKS="$DERIVED_DATA/Build/Products/Nightly/IINA.app/Contents/Frameworks"
+          test -d "$APP_FRAMEWORKS"
+          for dylib in deps/lib/*.dylib; do
+            cp -Rf "$dylib" "$APP_FRAMEWORKS/$(basename "$dylib")"
+          done
+
+      - name: Re-sign app bundle
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Nightly/IINA.app"
+          APP_FRAMEWORKS="$APP_PATH/Contents/Frameworks"
+          test -d "$APP_PATH"
+
+          find "$APP_FRAMEWORKS" -type f -name '*.dylib' -print0 | while IFS= read -r -d '' dylib; do
+            codesign --force --sign - --timestamp=none "$dylib"
+          done
+
+          codesign --force --deep --sign - --timestamp=none "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Package app
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Nightly/IINA.app"
+          test -d "$APP_PATH"
+          tar cJf "$ARCHIVE_PATH" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package_meta.outputs.artifact_name }}
+          path: ${{ env.ARCHIVE_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release
+        if: ${{ inputs.publish_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package_meta.outputs.release_tag }}
+          name: ${{ steps.package_meta.outputs.release_name }}
+          generate_release_notes: true
+          files: ${{ env.ARCHIVE_PATH }}

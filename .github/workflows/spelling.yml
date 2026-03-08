@@ -1,11 +1,7 @@
 name: Spelling
 
 on:
-  push:
-      branches: [develop]
-  pull_request:
-      branches: [develop]
-
+  workflow_dispatch:
 jobs:
   typos:
     runs-on: ubuntu-latest
