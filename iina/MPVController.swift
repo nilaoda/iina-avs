@@ -672,6 +672,7 @@ class MPVController: NSObject {
       fatalError("mpvInitRendering() should be called after mpv handle being initialized!")
     }
     let apiType = UnsafeMutableRawPointer(mutating: (MPV_RENDER_API_TYPE_OPENGL as NSString).utf8String)
+    let backend = UnsafeMutableRawPointer(mutating: ("gpu-next" as NSString).utf8String)
     var openGLInitParams = mpv_opengl_init_params(get_proc_address: mpvGetOpenGLFunc,
                                                   get_proc_address_ctx: nil)
     withUnsafeMutablePointer(to: &openGLInitParams) { openGLInitParams in
@@ -679,6 +680,7 @@ class MPVController: NSObject {
       withUnsafeMutablePointer(to: &advanced) { advanced in
         var params = [
           mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: apiType),
+          mpv_render_param(type: MPV_RENDER_PARAM_BACKEND, data: backend),
           mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: openGLInitParams),
           mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL, data: advanced),
           mpv_render_param()

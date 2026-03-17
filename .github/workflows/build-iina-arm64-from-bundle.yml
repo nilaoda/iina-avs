@@ -9,15 +9,15 @@ on:
         type: string
         default: 'nilaoda/mpv-iina-avs'
       bundle_tag:
-        description: 'Release tag containing the libmpv bundle'
-        required: true
+        description: 'Release tag containing the libmpv bundle (leave empty to use the latest release)'
+        required: false
         type: string
-        default: 'mpv-iina-avs-ffmpeg-8.0.1-mpv-v0.40.0-20260317-030034'
+        default: ''
       bundle_asset:
         description: 'Bundle asset filename to download from the release'
         required: true
         type: string
-        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-8.0.1-mpv-v0.40.0.zip'
+        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-8.0.1-mpv-v0.41.0.zip'
       publish_release:
         description: 'Publish the packaged IINA app to GitHub Releases'
         required: true
@@ -55,13 +55,26 @@ jobs:
           curl -fL "$YT_DLP_DOWNLOAD_URL" -o deps/executable/youtube-dl
           chmod +x deps/executable/youtube-dl
 
-          bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
+          if [[ -n "${BUNDLE_TAG:-}" ]]; then
+            bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
+          else
+            bundle_url="https://github.com/${BUNDLE_REPO}/releases/latest/download/${BUNDLE_ASSET}"
+          fi
           echo "Downloading bundle: $bundle_url"
           curl -fL "$bundle_url" -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET"
           unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d deps/lib
 
-          ln -sfn libplacebo.360.dylib deps/lib/libplacebo.338.dylib
-          ln -sfn librubberband.3.dylib deps/lib/librubberband.2.dylib
+          expected_libplacebo="deps/lib/libplacebo.338.dylib"
+          if [[ ! -e "$expected_libplacebo" ]]; then
+            actual_libplacebo="$(find deps/lib -maxdepth 1 -type f -name 'libplacebo.*.dylib' | sort | tail -n 1)"
+            [[ -n "$actual_libplacebo" ]] && ln -sfn "$(basename "$actual_libplacebo")" "$expected_libplacebo"
+          fi
+
+          expected_rubberband="deps/lib/librubberband.2.dylib"
+          if [[ ! -e "$expected_rubberband" ]]; then
+            actual_rubberband="$(find deps/lib -maxdepth 1 -type f -name 'librubberband.*.dylib' | sort | tail -n 1)"
+            [[ -n "$actual_rubberband" ]] && ln -sfn "$(basename "$actual_rubberband")" "$expected_rubberband"
+          fi
 
           echo "Installed dylibs:"
           find deps/lib -maxdepth 1 -name '*.dylib' | sort
@@ -113,7 +126,7 @@ jobs:
           INPUT_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          bundle_slug="$(printf '%s' "$BUNDLE_TAG" | tr '/ :' '---')"
+          bundle_slug="$(printf '%s' "${BUNDLE_TAG:-latest}" | tr '/ :' '---')"
           asset_stub="${BUNDLE_ASSET%.zip}"
           archive_name="IINA-arm64-${asset_stub}.tar.xz"
           artifact_name="IINA-arm64-${asset_stub}"
