@@ -45,7 +45,8 @@ jobs:
           YT_DLP_DOWNLOAD_URL: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
         run: |
           set -euo pipefail
-          mkdir -p deps/lib deps/executable "$RUNNER_TEMP/custom-bundle"
+          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
+          mkdir -p deps/lib deps/executable "$CUSTOM_LIB_DIR"
 
           while IFS= read -r file; do
             [[ -n "$file" ]] || continue
@@ -62,22 +63,12 @@ jobs:
           fi
           echo "Downloading bundle: $bundle_url"
           curl -fL "$bundle_url" -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET"
-          unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d deps/lib
+          unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d "$CUSTOM_LIB_DIR"
 
-          expected_libplacebo="deps/lib/libplacebo.338.dylib"
-          if [[ ! -e "$expected_libplacebo" ]]; then
-            actual_libplacebo="$(find deps/lib -maxdepth 1 -type f -name 'libplacebo.*.dylib' | sort | tail -n 1)"
-            [[ -n "$actual_libplacebo" ]] && ln -sfn "$(basename "$actual_libplacebo")" "$expected_libplacebo"
-          fi
-
-          expected_rubberband="deps/lib/librubberband.2.dylib"
-          if [[ ! -e "$expected_rubberband" ]]; then
-            actual_rubberband="$(find deps/lib -maxdepth 1 -type f -name 'librubberband.*.dylib' | sort | tail -n 1)"
-            [[ -n "$actual_rubberband" ]] && ln -sfn "$(basename "$actual_rubberband")" "$expected_rubberband"
-          fi
-
-          echo "Installed dylibs:"
+          echo "Official build dylibs:"
           find deps/lib -maxdepth 1 -name '*.dylib' | sort
+          echo "Custom runtime dylibs:"
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -name '*.dylib' | sort
 
       - name: Patch project for arm64 dylib set
         run: |
@@ -148,8 +139,28 @@ jobs:
         run: |
           set -euo pipefail
           APP_FRAMEWORKS="$DERIVED_DATA/Build/Products/Nightly/IINA.app/Contents/Frameworks"
+          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
           test -d "$APP_FRAMEWORKS"
-          for dylib in deps/lib/*.dylib; do
+          test -d "$CUSTOM_LIB_DIR"
+
+          cleanup_patterns="$RUNNER_TEMP/custom-bundle/cleanup-patterns.txt"
+          : > "$cleanup_patterns"
+
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -type f -name '*.dylib' | while IFS= read -r dylib; do
+            base="$(basename "$dylib")"
+            family="${base%%.[0-9]*.dylib}"
+            if [[ "$family" == "$base" ]]; then
+              family="${base%.dylib}"
+            fi
+            printf '%s\n' "$family*.dylib" >> "$cleanup_patterns"
+          done
+
+          sort -u "$cleanup_patterns" | while IFS= read -r pattern; do
+            find "$APP_FRAMEWORKS" -maxdepth 1 -type f -name "$pattern" -delete
+            find "$APP_FRAMEWORKS" -maxdepth 1 -type l -name "$pattern" -delete
+          done
+
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -type f -name '*.dylib' | while IFS= read -r dylib; do
             cp -Rf "$dylib" "$APP_FRAMEWORKS/$(basename "$dylib")"
           done
 
