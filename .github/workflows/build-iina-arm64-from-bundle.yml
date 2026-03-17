@@ -12,12 +12,12 @@ on:
         description: 'Release tag containing the libmpv bundle'
         required: true
         type: string
-        default: 'mpv-iina-avs-ffmpeg-7.1.3-mpv-v0.40.0-20260308-182913'
+        default: 'mpv-iina-avs-ffmpeg-8.0.1-mpv-v0.40.0-20260317-030034'
       bundle_asset:
         description: 'Bundle asset filename to download from the release'
         required: true
         type: string
-        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-7.1.3-mpv-v0.40.0.zip'
+        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-8.0.1-mpv-v0.40.0.zip'
       publish_release:
         description: 'Publish the packaged IINA app to GitHub Releases'
         required: true
