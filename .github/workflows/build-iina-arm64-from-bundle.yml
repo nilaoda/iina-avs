@@ -112,12 +112,21 @@ jobs:
       - name: Compute packaging metadata
         id: package_meta
         env:
+          BUNDLE_REPO: ${{ inputs.bundle_repo }}
           BUNDLE_TAG: ${{ inputs.bundle_tag }}
           BUNDLE_ASSET: ${{ inputs.bundle_asset }}
           INPUT_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          bundle_slug="$(printf '%s' "${BUNDLE_TAG:-latest}" | tr '/ :' '---')"
+          if [[ -n "${BUNDLE_TAG:-}" ]]; then
+            effective_bundle_tag="$BUNDLE_TAG"
+            bundle_release_url="https://github.com/${BUNDLE_REPO}/releases/tag/${BUNDLE_TAG}"
+          else
+            bundle_release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${BUNDLE_REPO}/releases/latest")"
+            effective_bundle_tag="${bundle_release_url##*/}"
+          fi
+
+          bundle_slug="$(printf '%s' "${effective_bundle_tag:-latest}" | tr '/ :' '---')"
           asset_stub="${BUNDLE_ASSET%.zip}"
           archive_name="IINA-arm64-${asset_stub}.tar.xz"
           artifact_name="IINA-arm64-${asset_stub}"
@@ -131,7 +140,30 @@ jobs:
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "bundle_release_url=$bundle_release_url" >> "$GITHUB_OUTPUT"
           echo "ARCHIVE_PATH=${{ runner.temp }}/$archive_name" >> "$GITHUB_ENV"
+
+      - name: Generate release body
+        if: ${{ inputs.publish_release }}
+        id: release_notes
+        env:
+          BUNDLE_RELEASE_URL: ${{ steps.package_meta.outputs.bundle_release_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          import os
+
+          body = (
+              "## What's Changed\n"
+              + "\n"
+              + f"\n\n**Built with**: {os.environ['BUNDLE_RELEASE_URL']}\n"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("body<<__EOF__\n")
+              fh.write(body)
+              fh.write("__EOF__\n")
+          PY2
 
       - name: Sync extra dylibs into app bundle
         env:
@@ -293,5 +325,5 @@ jobs:
         with:
           tag_name: ${{ steps.package_meta.outputs.release_tag }}
           name: ${{ steps.package_meta.outputs.release_name }}
-          generate_release_notes: true
+          body: ${{ steps.release_notes.outputs.body }}
           files: ${{ env.ARCHIVE_PATH }}
