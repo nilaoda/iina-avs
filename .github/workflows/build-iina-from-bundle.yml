@@ -1,4 +1,4 @@
-name: Build IINA arm64 from custom libmpv bundle
+name: Build IINA from custom libmpv bundle
 
 on:
   workflow_dispatch:
@@ -9,68 +9,113 @@ on:
         type: string
         default: 'nilaoda/mpv-iina-avs'
       bundle_tag:
-        description: 'Release tag containing the libmpv bundle (leave empty to use the latest release)'
+        description: 'Release tag containing the libmpv bundle (leave empty for latest)'
         required: false
         type: string
         default: ''
-      bundle_asset:
-        description: 'Bundle asset filename to download from the release'
-        required: true
-        type: string
-        default: 'iina-mpv-bundle-macos-arm64-gpl-ffmpeg-8.1-mpv-v0.41.0.zip'
       publish_release:
-        description: 'Publish the packaged IINA app to GitHub Releases'
+        description: 'Publish the packaged IINA apps to GitHub Releases'
         required: true
         type: boolean
         default: false
       release_tag:
-        description: 'Release tag to publish to (leave empty to auto-generate when publishing)'
+        description: 'Release tag to publish to (leave empty to auto-generate)'
         required: false
         type: string
 
+env:
+  FFMPEG_VERSION: '8.1'
+  MPV_VERSION: 'v0.41.0'
+  LICENSE_FLAVOR: gpl
+
 jobs:
-  build-arm64:
+  metadata:
+    runs-on: macos-26
+    outputs:
+      bundle_tag: ${{ steps.meta.outputs.bundle_tag }}
+      bundle_release_url: ${{ steps.meta.outputs.bundle_release_url }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+    steps:
+      - name: Resolve bundle and release metadata
+        id: meta
+        env:
+          BUNDLE_REPO: ${{ inputs.bundle_repo }}
+          INPUT_BUNDLE_TAG: ${{ inputs.bundle_tag }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${INPUT_BUNDLE_TAG:-}" ]]; then
+            bundle_tag="$INPUT_BUNDLE_TAG"
+            bundle_release_url="https://github.com/${BUNDLE_REPO}/releases/tag/${bundle_tag}"
+          else
+            bundle_release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${BUNDLE_REPO}/releases/latest")"
+            bundle_tag="${bundle_release_url##*/}"
+          fi
+
+          bundle_slug="$(printf '%s' "$bundle_tag" | tr '/ :' '---')"
+          if [[ -n "${INPUT_RELEASE_TAG:-}" ]]; then
+            release_tag="$INPUT_RELEASE_TAG"
+          else
+            release_tag="iina-${bundle_slug}-$(date -u +%Y%m%d-%H%M%S)"
+          fi
+          release_name="IINA from ${bundle_tag}"
+
+          echo "bundle_tag=$bundle_tag" >> "$GITHUB_OUTPUT"
+          echo "bundle_release_url=$bundle_release_url" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+          - arch: x86_64
     runs-on: macos-26
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare custom dependencies
+      - name: Prepare dependencies
         env:
+          ARCH: ${{ matrix.arch }}
           BUNDLE_REPO: ${{ inputs.bundle_repo }}
-          BUNDLE_TAG: ${{ inputs.bundle_tag }}
-          BUNDLE_ASSET: ${{ inputs.bundle_asset }}
-          DYLIBS_DOWNLOAD_PATH: https://iina.io/dylibs/arm64
+          BUNDLE_TAG: ${{ needs.metadata.outputs.bundle_tag }}
+          BUNDLE_ASSET: iina-mpv-bundle-macos-${{ matrix.arch }}-${{ env.LICENSE_FLAVOR }}-ffmpeg-${{ env.FFMPEG_VERSION }}-mpv-${{ env.MPV_VERSION }}.zip
+          DYLIBS_DOWNLOAD_PATH: https://iina.io/dylibs/${{ matrix.arch }}
           YT_DLP_DOWNLOAD_URL: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
         run: |
           set -euo pipefail
-          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
-          mkdir -p deps/lib deps/executable "$CUSTOM_LIB_DIR"
 
+          echo "=== Downloading official dylibs for $ARCH ==="
+          mkdir -p deps/lib deps/executable
           while IFS= read -r file; do
             [[ -n "$file" ]] || continue
             curl -fL "$DYLIBS_DOWNLOAD_PATH/$file" -o "deps/lib/$file"
           done < <(curl -fL "$DYLIBS_DOWNLOAD_PATH/filelist.txt")
-
           curl -fL "$YT_DLP_DOWNLOAD_URL" -o deps/executable/youtube-dl
           chmod +x deps/executable/youtube-dl
 
-          if [[ -n "${BUNDLE_TAG:-}" ]]; then
-            bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
-          else
-            bundle_url="https://github.com/${BUNDLE_REPO}/releases/latest/download/${BUNDLE_ASSET}"
-          fi
-          echo "Downloading bundle: $bundle_url"
+          echo "=== Downloading custom libmpv bundle ==="
+          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
+          mkdir -p "$CUSTOM_LIB_DIR"
+
+          bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
+          echo "Downloading: $bundle_url"
           curl -fL "$bundle_url" -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET"
           unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d "$CUSTOM_LIB_DIR"
 
-          echo "Official build dylibs:"
+          echo "=== Official dylibs ==="
           find deps/lib -maxdepth 1 -name '*.dylib' | sort
-          echo "Custom runtime dylibs:"
+          echo "=== Custom runtime dylibs ==="
           find "$CUSTOM_LIB_DIR" -maxdepth 1 -name '*.dylib' | sort
 
-      - name: Patch project for arm64 dylib set
+      - name: Patch project for custom dylib set
         run: |
           set -euo pipefail
           python3 - <<'PY2'
@@ -93,10 +138,11 @@ jobs:
           print('patched', path)
           PY2
 
-      - name: Build IINA (arm64)
+      - name: Build IINA (${{ matrix.arch }})
         env:
           DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
           DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           rm -rf "$DERIVED_DATA"
@@ -105,65 +151,23 @@ jobs:
             -scheme iina \
             -configuration Nightly \
             -derivedDataPath "$DERIVED_DATA" \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=YES \
+            ARCHS="$ARCH" \
+            ONLY_ACTIVE_ARCH=NO \
             build
 
       - name: Compute packaging metadata
         id: package_meta
         env:
-          BUNDLE_REPO: ${{ inputs.bundle_repo }}
-          BUNDLE_TAG: ${{ inputs.bundle_tag }}
-          BUNDLE_ASSET: ${{ inputs.bundle_asset }}
-          INPUT_TAG: ${{ inputs.release_tag }}
+          ARCH: ${{ matrix.arch }}
+          BUNDLE_ASSET: iina-mpv-bundle-macos-${{ matrix.arch }}-${{ env.LICENSE_FLAVOR }}-ffmpeg-${{ env.FFMPEG_VERSION }}-mpv-${{ env.MPV_VERSION }}.zip
         run: |
           set -euo pipefail
-          if [[ -n "${BUNDLE_TAG:-}" ]]; then
-            effective_bundle_tag="$BUNDLE_TAG"
-            bundle_release_url="https://github.com/${BUNDLE_REPO}/releases/tag/${BUNDLE_TAG}"
-          else
-            bundle_release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${BUNDLE_REPO}/releases/latest")"
-            effective_bundle_tag="${bundle_release_url##*/}"
-          fi
-
-          bundle_slug="$(printf '%s' "${effective_bundle_tag:-latest}" | tr '/ :' '---')"
           asset_stub="${BUNDLE_ASSET%.zip}"
-          archive_name="IINA-arm64-${asset_stub}.tar.xz"
-          artifact_name="IINA-arm64-${asset_stub}"
-          if [[ -n "$INPUT_TAG" ]]; then
-            release_tag="$INPUT_TAG"
-          else
-            release_tag="iina-arm64-${bundle_slug}-$(date -u +%Y%m%d-%H%M%S)"
-          fi
-          release_name="IINA arm64 from ${asset_stub}"
+          archive_name="IINA-${asset_stub}.tar.xz"
+          artifact_name="IINA-${asset_stub}"
           echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
-          echo "bundle_release_url=$bundle_release_url" >> "$GITHUB_OUTPUT"
           echo "ARCHIVE_PATH=${{ runner.temp }}/$archive_name" >> "$GITHUB_ENV"
-
-      - name: Generate release body
-        if: ${{ inputs.publish_release }}
-        id: release_notes
-        env:
-          BUNDLE_RELEASE_URL: ${{ steps.package_meta.outputs.bundle_release_url }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY2'
-          import os
-
-          body = (
-              "## What's Changed\n"
-              + "\n"
-              + f"\n\n**Built with**: {os.environ['BUNDLE_RELEASE_URL']}\n"
-          )
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write("body<<__EOF__\n")
-              fh.write(body)
-              fh.write("__EOF__\n")
-          PY2
 
       - name: Sync extra dylibs into app bundle
         env:
@@ -319,11 +323,52 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  release:
+    if: ${{ inputs.publish_release }}
+    needs:
+      - metadata
+      - build
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: IINA-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Show release files
+        run: |
+          set -euo pipefail
+          ls -la release-files/
+
+      - name: Generate release body
+        id: release_notes
+        env:
+          BUNDLE_RELEASE_URL: ${{ needs.metadata.outputs.bundle_release_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          import os
+
+          body = (
+              "## What's Changed\n"
+              "\n"
+              "- Rebuilt IINA app bundles for `arm64` and `x86_64`\n"
+              f"- Built with: {os.environ['BUNDLE_RELEASE_URL']}\n"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("body<<__EOF__\n")
+              fh.write(body)
+              fh.write("__EOF__\n")
+          PY2
+
       - name: Publish release
-        if: ${{ inputs.publish_release }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.package_meta.outputs.release_tag }}
-          name: ${{ steps.package_meta.outputs.release_name }}
+          tag_name: ${{ needs.metadata.outputs.release_tag }}
+          name: ${{ needs.metadata.outputs.release_name }}
           body: ${{ steps.release_notes.outputs.body }}
-          files: ${{ env.ARCHIVE_PATH }}
+          files: release-files/*.tar.xz
