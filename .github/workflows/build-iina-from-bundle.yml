@@ -115,7 +115,8 @@ jobs:
           echo "=== Custom runtime dylibs ==="
           find "$CUSTOM_LIB_DIR" -maxdepth 1 -name '*.dylib' | sort
 
-      - name: Patch project for custom dylib set
+      - name: Patch project for arm64 dylib set
+        if: matrix.arch == 'arm64'
         run: |
           set -euo pipefail
           python3 - <<'PY2'
