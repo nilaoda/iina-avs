@@ -198,8 +198,6 @@ class MPVController: NSObject {
   /// hardware decoding support on this Mac. This is not comprehensive. This method only covers the recent codecs whose support
   /// for hardware decoding varies among Macs. This merely reduces the dependence upon the FFmpeg fallback to software decoding
   /// feature in some cases.
-  /// - ToDo: **REMOVE** workaround for FFmpeg not supporting AV1 hardware decoding when upgrading to a FFmpeg version
-  ///         that supports it.
   private func adjustCodecWhiteList() {
     // Allow the user to override this behavior.
     guard !userOptionsContains(MPVOption.Video.hwdecCodecs) else {
@@ -228,17 +226,6 @@ class MPVController: NSObject {
       // any of them retain the codec in the option value.
       for codecType in codecTypes {
         if HardwareDecodeCapabilities.shared.isSupported(codecType) {
-          if codecType == kCMVideoCodecType_AV1 {
-            // WORKAROUND missing support for AV1 hardware decoding.
-            // This Mac supports AV1 hardware decoding, but the version of FFmpeg IINA is using does
-            // not. FFmpeg will try to use hardware decoding, which will fail. FFmpeg will then fall
-            // back to software decoding. When FFmpeg does this it logs the warning message "Error
-            // while decoding frame (hardware decoding)!" which is alarming to users. Prevent this
-            // by removing AV1 from the codecs whitelist.
-            needsAdjustment = true
-            log("FFmpeg does not support av1 hardware decoding")
-            continue codecLoop
-          }
           adjusted.append(codec)
           continue codecLoop
         }
@@ -362,11 +349,9 @@ class MPVController: NSObject {
     setUserOption(PK.screenshotFormat, type: .other, forName: MPVOption.Screenshot.screenshotFormat,
                   verboseIfDefault: true) { key in
       let format: Preference.ScreenshotFormat = Preference.enum(for: key)
-      // Workaround for mpv issue  #15107, HDR screenshots are unimplemented (gpu/gpu-next).
-      // If the screenshot format is set to JPEG XL then set the screenshot-sw option to yes. This
-      // causes the screenshot to be rendered by software instead of the VO. If a HDR video is being
-      // displayed in HDR then the resulting screenshot will be HDR.
-      self.chkErr(self.setOptionFlag(MPVOption.Screenshot.screenshotSw, format == .jxl,
+      // Keep screenshots on the VO path so gpu-next can reuse the same
+      // playback color mapping/tone mapping instead of forcing a software render.
+      self.chkErr(self.setOptionFlag(MPVOption.Screenshot.screenshotSw, false,
                                      verboseIfDefault: true))
       return String(describing: format)
     }
@@ -677,6 +662,7 @@ class MPVController: NSObject {
       fatalError("mpvInitRendering() should be called after mpv handle being initialized!")
     }
     let apiType = UnsafeMutableRawPointer(mutating: (MPV_RENDER_API_TYPE_OPENGL as NSString).utf8String)
+    let backend = UnsafeMutableRawPointer(mutating: ("gpu-next" as NSString).utf8String)
     var openGLInitParams = mpv_opengl_init_params(get_proc_address: mpvGetOpenGLFunc,
                                                   get_proc_address_ctx: nil)
     withUnsafeMutablePointer(to: &openGLInitParams) { openGLInitParams in
@@ -684,6 +670,7 @@ class MPVController: NSObject {
       withUnsafeMutablePointer(to: &advanced) { advanced in
         var params = [
           mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: apiType),
+          mpv_render_param(type: MPV_RENDER_PARAM_BACKEND, data: backend),
           mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: openGLInitParams),
           mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL, data: advanced),
           mpv_render_param()

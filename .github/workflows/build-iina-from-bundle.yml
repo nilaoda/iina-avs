@@ -1,0 +1,375 @@
+name: Build IINA from custom libmpv bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_repo:
+        description: 'Repository that publishes the libmpv bundle release'
+        required: true
+        type: string
+        default: 'nilaoda/mpv-iina-avs'
+      bundle_tag:
+        description: 'Release tag containing the libmpv bundle (leave empty for latest)'
+        required: false
+        type: string
+        default: ''
+      publish_release:
+        description: 'Publish the packaged IINA apps to GitHub Releases'
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: 'Release tag to publish to (leave empty to auto-generate)'
+        required: false
+        type: string
+
+env:
+  FFMPEG_VERSION: '8.1'
+  MPV_VERSION: 'v0.41.0'
+  LICENSE_FLAVOR: gpl
+
+jobs:
+  metadata:
+    runs-on: macos-26
+    outputs:
+      bundle_tag: ${{ steps.meta.outputs.bundle_tag }}
+      bundle_release_url: ${{ steps.meta.outputs.bundle_release_url }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+    steps:
+      - name: Resolve bundle and release metadata
+        id: meta
+        env:
+          BUNDLE_REPO: ${{ inputs.bundle_repo }}
+          INPUT_BUNDLE_TAG: ${{ inputs.bundle_tag }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${INPUT_BUNDLE_TAG:-}" ]]; then
+            bundle_tag="$INPUT_BUNDLE_TAG"
+            bundle_release_url="https://github.com/${BUNDLE_REPO}/releases/tag/${bundle_tag}"
+          else
+            bundle_release_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${BUNDLE_REPO}/releases/latest")"
+            bundle_tag="${bundle_release_url##*/}"
+          fi
+
+          bundle_slug="$(printf '%s' "$bundle_tag" | tr '/ :' '---')"
+          if [[ -n "${INPUT_RELEASE_TAG:-}" ]]; then
+            release_tag="$INPUT_RELEASE_TAG"
+          else
+            release_tag="iina-${bundle_slug}-$(date -u +%Y%m%d-%H%M%S)"
+          fi
+          release_name="IINA from ${bundle_tag}"
+
+          echo "bundle_tag=$bundle_tag" >> "$GITHUB_OUTPUT"
+          echo "bundle_release_url=$bundle_release_url" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+          - arch: x86_64
+    runs-on: macos-26
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare dependencies
+        env:
+          ARCH: ${{ matrix.arch }}
+          BUNDLE_REPO: ${{ inputs.bundle_repo }}
+          BUNDLE_TAG: ${{ needs.metadata.outputs.bundle_tag }}
+          BUNDLE_ASSET: iina-mpv-bundle-macos-${{ matrix.arch }}-${{ env.LICENSE_FLAVOR }}-ffmpeg-${{ env.FFMPEG_VERSION }}-mpv-${{ env.MPV_VERSION }}.zip
+          DYLIBS_DOWNLOAD_PATH: https://iina.io/dylibs/${{ matrix.arch }}
+          YT_DLP_DOWNLOAD_URL: https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos
+        run: |
+          set -euo pipefail
+
+          echo "=== Downloading official dylibs for $ARCH ==="
+          mkdir -p deps/lib deps/executable
+          while IFS= read -r file; do
+            [[ -n "$file" ]] || continue
+            curl -fL "$DYLIBS_DOWNLOAD_PATH/$file" -o "deps/lib/$file"
+          done < <(curl -fL "$DYLIBS_DOWNLOAD_PATH/filelist.txt")
+          curl -fL "$YT_DLP_DOWNLOAD_URL" -o deps/executable/youtube-dl
+          chmod +x deps/executable/youtube-dl
+
+          echo "=== Downloading custom libmpv bundle ==="
+          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
+          mkdir -p "$CUSTOM_LIB_DIR"
+
+          bundle_url="https://github.com/${BUNDLE_REPO}/releases/download/${BUNDLE_TAG}/${BUNDLE_ASSET}"
+          echo "Downloading: $bundle_url"
+          curl -fL "$bundle_url" -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET"
+          unzip -o "$RUNNER_TEMP/custom-bundle/$BUNDLE_ASSET" -d "$CUSTOM_LIB_DIR"
+
+          echo "=== Official dylibs ==="
+          find deps/lib -maxdepth 1 -name '*.dylib' | sort
+          echo "=== Custom runtime dylibs ==="
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -name '*.dylib' | sort
+
+      - name: Patch project for arm64 dylib set
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          from pathlib import Path
+
+          path = Path('iina.xcodeproj/project.pbxproj')
+          text = path.read_text()
+          for needle in [
+              '		518376DD2C23DD2300574F00 /* libgcc_s.1.1.dylib in Copy Dylibs */ = {isa = PBXBuildFile; fileRef = 518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };\n',
+              '		518376DE2C23DD2300574F00 /* libstdc++.6.dylib in Copy Dylibs */ = {isa = PBXBuildFile; fileRef = 518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };\n',
+              '				518376DD2C23DD2300574F00 /* libgcc_s.1.1.dylib in Copy Dylibs */,\n',
+              '				518376DE2C23DD2300574F00 /* libstdc++.6.dylib in Copy Dylibs */,\n',
+              '		518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libgcc_s.1.1.dylib; path = deps/lib/libgcc_s.1.1.dylib; sourceTree = "<group>"; };\n',
+              '		518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.6.dylib"; path = "deps/lib/libstdc++.6.dylib"; sourceTree = "<group>"; };\n',
+              '				518376D92C23DB1400574F00 /* libgcc_s.1.1.dylib */,\n',
+              '				518376DB2C23DB2F00574F00 /* libstdc++.6.dylib */,\n',
+          ]:
+              text = text.replace(needle, '')
+          path.write_text(text)
+          print('patched', path)
+          PY2
+
+      - name: Build IINA (${{ matrix.arch }})
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          rm -rf "$DERIVED_DATA"
+          xcodebuild \
+            -project iina.xcodeproj \
+            -scheme iina \
+            -configuration Nightly \
+            -derivedDataPath "$DERIVED_DATA" \
+            ARCHS="$ARCH" \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Compute packaging metadata
+        id: package_meta
+        env:
+          ARCH: ${{ matrix.arch }}
+          BUNDLE_ASSET: iina-mpv-bundle-macos-${{ matrix.arch }}-${{ env.LICENSE_FLAVOR }}-ffmpeg-${{ env.FFMPEG_VERSION }}-mpv-${{ env.MPV_VERSION }}.zip
+        run: |
+          set -euo pipefail
+          asset_stub="${BUNDLE_ASSET%.zip}"
+          archive_name="IINA-${asset_stub}.tar.xz"
+          artifact_name="IINA-${asset_stub}"
+          echo "archive_name=$archive_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "ARCHIVE_PATH=${{ runner.temp }}/$archive_name" >> "$GITHUB_ENV"
+
+      - name: Sync extra dylibs into app bundle
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Nightly/IINA.app"
+          APP_FRAMEWORKS="$DERIVED_DATA/Build/Products/Nightly/IINA.app/Contents/Frameworks"
+          CUSTOM_LIB_DIR="$RUNNER_TEMP/custom-bundle/lib"
+          test -d "$APP_PATH"
+          test -d "$APP_FRAMEWORKS"
+          test -d "$CUSTOM_LIB_DIR"
+
+          cleanup_patterns="$RUNNER_TEMP/custom-bundle/cleanup-patterns.txt"
+          : > "$cleanup_patterns"
+
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -type f -name '*.dylib' | while IFS= read -r dylib; do
+            base="$(basename "$dylib")"
+            family="${base%%.[0-9]*.dylib}"
+            if [[ "$family" == "$base" ]]; then
+              family="${base%.dylib}"
+            fi
+            printf '%s\n' "$family*.dylib" >> "$cleanup_patterns"
+          done
+
+          sort -u "$cleanup_patterns" | while IFS= read -r pattern; do
+            find "$APP_FRAMEWORKS" -maxdepth 1 -type f -name "$pattern" -delete
+            find "$APP_FRAMEWORKS" -maxdepth 1 -type l -name "$pattern" -delete
+          done
+
+          find "$CUSTOM_LIB_DIR" -maxdepth 1 -type f -name '*.dylib' | while IFS= read -r dylib; do
+            cp -Rf "$dylib" "$APP_FRAMEWORKS/$(basename "$dylib")"
+          done
+
+          APP_PATH="$APP_PATH" APP_FRAMEWORKS="$APP_FRAMEWORKS" python3 - <<'PY2'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          app_path = os.environ["APP_PATH"]
+          frameworks = os.environ["APP_FRAMEWORKS"]
+
+          dep_rx = re.compile(r'@rpath/([^ ]+)')
+          family_rx = re.compile(r'^(.*?)(?:\.\d.*)?\.dylib$')
+
+          def is_macho(path: str) -> bool:
+              try:
+                  with open(path, 'rb') as f:
+                      magic = f.read(4)
+                  return magic in {
+                      b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe',
+                      b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe',
+                      b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca',
+                      b'\xca\xfe\xba\xbf', b'\xbf\xba\xfe\xca',
+                  }
+              except OSError:
+                  return False
+
+          def macho_files(root: str):
+              for dirpath, _, filenames in os.walk(root):
+                  for filename in filenames:
+                      path = os.path.join(dirpath, filename)
+                      if is_macho(path):
+                          yield path
+
+          def required_rpaths(root: str):
+              required = set()
+              for path in macho_files(root):
+                  try:
+                      out = subprocess.check_output(['otool', '-L', path], text=True, stderr=subprocess.DEVNULL)
+                  except subprocess.CalledProcessError:
+                      continue
+                  for line in out.splitlines()[1:]:
+                      m = dep_rx.search(line)
+                      if m:
+                          required.add(m.group(1))
+              return sorted(
+                  name for name in required
+                  if not name.startswith('libswift')
+              )
+
+          def existing_files():
+              return sorted(os.listdir(frameworks))
+
+          def resolve_family(name: str):
+              m = family_rx.match(name)
+              stem = m.group(1) if m else name.removesuffix('.dylib')
+              candidates = sorted(
+                  f for f in existing_files()
+                  if f == stem + '.dylib' or (f.startswith(stem + '.') and f.endswith('.dylib'))
+              )
+              return candidates[-1] if candidates else None
+
+          created = []
+          missing = [name for name in required_rpaths(app_path)
+                     if not os.path.exists(os.path.join(frameworks, name))]
+
+          for name in missing:
+              target = resolve_family(name)
+              if not target:
+                  continue
+              link_path = os.path.join(frameworks, name)
+              if not os.path.exists(link_path):
+                  os.symlink(target, link_path)
+                  created.append((name, target))
+
+          unresolved = [name for name in required_rpaths(app_path)
+                        if not os.path.exists(os.path.join(frameworks, name))]
+
+          if created:
+              print('Created compatibility symlinks:')
+              for name, target in created:
+                  print(f'  {name} -> {target}')
+
+          if unresolved:
+              print('Unresolved @rpath dependencies:', file=sys.stderr)
+              for name in unresolved:
+                  print(f'  {name}', file=sys.stderr)
+              sys.exit(1)
+          PY2
+
+      - name: Re-sign app bundle
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Nightly/IINA.app"
+          APP_FRAMEWORKS="$APP_PATH/Contents/Frameworks"
+          test -d "$APP_PATH"
+
+          find "$APP_FRAMEWORKS" -type f -name '*.dylib' -print0 | while IFS= read -r -d '' dylib; do
+            codesign --force --sign - --timestamp=none "$dylib"
+          done
+
+          codesign --force --deep --sign - --timestamp=none "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Package app
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Nightly/IINA.app"
+          test -d "$APP_PATH"
+          tar cJf "$ARCHIVE_PATH" -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package_meta.outputs.artifact_name }}
+          path: ${{ env.ARCHIVE_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: ${{ inputs.publish_release }}
+    needs:
+      - metadata
+      - build
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: IINA-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Show release files
+        run: |
+          set -euo pipefail
+          ls -la release-files/
+
+      - name: Generate release body
+        id: release_notes
+        env:
+          BUNDLE_RELEASE_URL: ${{ needs.metadata.outputs.bundle_release_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          import os
+
+          body = (
+              "## What's Changed\n"
+              "\n"
+              "- Rebuilt IINA app bundles for `arm64` and `x86_64`\n"
+              f"- Built with: {os.environ['BUNDLE_RELEASE_URL']}\n"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("body<<__EOF__\n")
+              fh.write(body)
+              fh.write("__EOF__\n")
+          PY2
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.release_tag }}
+          name: ${{ needs.metadata.outputs.release_name }}
+          body: ${{ steps.release_notes.outputs.body }}
+          files: release-files/*.tar.xz
