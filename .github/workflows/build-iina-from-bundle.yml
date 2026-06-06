@@ -141,7 +141,7 @@ jobs:
 
       - name: Build IINA (${{ matrix.arch }})
         env:
-          DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
           DERIVED_DATA: ${{ runner.temp }}/DerivedData
           ARCH: ${{ matrix.arch }}
         run: |
