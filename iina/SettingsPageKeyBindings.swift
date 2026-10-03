@@ -6,6 +6,9 @@
 //  Copyright © 2026 lhc. All rights reserved.
 //
 
+fileprivate let ui = SettingsUIHelper.sharedUI
+
+
 class SettingsPageKeyBindings: SettingsPage {
   override var identifier: String {
     "key.bindings"
@@ -22,8 +25,10 @@ class SettingsPageKeyBindings: SettingsPage {
   override var localizationTable: String {
     "SettingsKeyBindingLocalizable"
   }
+  
+  override var showSubSections: Bool { false }
 
-  private lazy var configEditor: ConfigEditor = .init(l10n: localizationContext)
+  private lazy var configEditor: ConfigEditor = ConfigEditor()
 
   override func content() -> [SettingsSection] {
     return sections {
@@ -67,6 +72,7 @@ private extension NSUserInterfaceItemIdentifier {
 fileprivate class ConfigEditor: SettingsAccessory.Base {
   fileprivate typealias KC = PrefKeyBindingViewController
 
+  private let prefObserver = Preference.Observer()
   let chooserView: NSView
   let editorView: NSView
 
@@ -128,7 +134,7 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
   // This variable is to prevent `NSTableView.reloadData()` in the `loadConfigFile` to trigger `loadConfigFile` again thus forming an infinite loop
   var isLoadingConfig = false
 
-  override init(l10n: SettingsLocalization.Context) {
+  override init() {
     self.mappingController = NSArrayController()
     self.kbTableView = NSTableView()
     self.searchField = NSSearchField()
@@ -150,7 +156,7 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
 
     self.addKeyMappingBtn = NSButton()
 
-    super.init(l10n: l10n)
+    super.init()
 
     kbTableView.bind(.content, to: mappingController, withKeyPath: "arrangedObjects", options: nil)
     kbTableView.bind(.selectionIndexes, to: mappingController, withKeyPath: "selectionIndexes", options: nil)
@@ -204,20 +210,11 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
     editorStackView.padding(.leading(16), .trailing, .vertical)
 
     NotificationCenter.default.addObserver(forName: .iinaKeyBindingChanged, object: nil, queue: .main, using: saveToConfFile)
-    UserDefaults.standard.addObserver(
-      self,
-      forKeyPath: Preference.Key.displayKeyBindingRawValues.rawValue,
-      options: [.new, .old],
-      context: nil
-    )
 
-    loadConfigFile(Preference.string(for: .currentInputConfigName), true)
-  }
-
-  override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-    if keyPath == Preference.Key.displayKeyBindingRawValues.rawValue {
+    prefObserver.add(.displayKeyBindingRawValues) { [unowned self] _ in
       kbTableView.reloadData()
     }
+    loadConfigFile(Preference.string(for: .currentInputConfigName), true)
   }
 
   /// This function firstly reloads the table data, select the config file row, then load the config file.
@@ -235,8 +232,10 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
       loadConfigFile(fallbackDefault)
     }
 
-    guard let configName = configName,
-          let confFilePath = getFilePath(forConfig: configName, showAlert: false) else { fallback(); return }
+    guard let configName, let confFilePath = getFilePath(forConfig: configName, showAlert: false) else {
+      fallback()
+      return
+    }
 
     populateChooser(select: configName)
     currentConfName = configName
@@ -268,7 +267,7 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
                    action: #selector(configSelected), target: self, obj: name)
     }
 
-    if let currentConfName = currentConfName {
+    if let currentConfName {
       chooserPopupButton.selectItem(withTitle: currentConfName)
     }
   }
@@ -299,19 +298,19 @@ fileprivate class ConfigEditor: SettingsAccessory.Base {
   @objc private func addConfBtnAction() {
     let menu = NSMenu()
     if #available(macOS 14.0, *) {
-      menu.addItem(.sectionHeader(title: l10n.localized(.text_NewKeyBindingSet)))
+      menu.addItem(.sectionHeader(title: ui.localized(.text_NewKeyBindingSet)))
     } else {
-      menu.addItem(withTitle: l10n.localized(.text_NewKeyBindingSet))
+      menu.addItem(withTitle: ui.localized(.text_NewKeyBindingSet))
       menu.addItem(.separator())
     }
-    menu.addItem(withTitle: l10n.localized(.text_CreateAnEmptySet),
+    menu.addItem(withTitle: ui.localized(.text_CreateAnEmptySet),
                  action: #selector(newConfFileAction), target: self)
-    menu.addItem(withTitle: l10n.localized(.text_DuplicateCurrentSet),
+    menu.addItem(withTitle: ui.localized(.text_DuplicateCurrentSet),
                  action: #selector(duplicateConfFileAction), target: self)
-    menu.addItem(withTitle: l10n.localized(.text_ImportAnExistingConfigFile),
+    menu.addItem(withTitle: ui.localized(.text_ImportAnExistingConfigFile),
                  action: #selector(importConfigAction), target: self)
     menu.addItem(.separator())
-    menu.addItem(withTitle: l10n.localized(.text_ShowTheConfigFileIn),
+    menu.addItem(withTitle: ui.localized(.text_ShowTheConfigFileIn),
                  action: #selector(showConfFileAction), target: self)
     NSMenu.popUpContextMenu(menu, with: NSApp.currentEvent!, for: addConfBtn)
   }
@@ -496,7 +495,7 @@ extension ConfigEditor: NSTableViewDelegate, NSMenuDelegate {
     guard let km = (mappingController.arrangedObjects as? [KeyMapping])?[at: row] else { return nil }
     let cell = (tableView.makeView(withIdentifier: .columnID, owner: self) as? KeyMappingCell) ?? KeyMappingCell()
 
-    cell.setup(keyMapping: km, self)
+    cell.setup(keyMapping: km, isSelected: row == tableView.selectedRow, self)
     return cell
   }
 
@@ -518,7 +517,7 @@ fileprivate class KeyMappingCell: NSTableCellView {
   var lockHelpButton: ButtonWithObject!
   weak var editor: ConfigEditor!
 
-  func setup(keyMapping km: KeyMapping, _ editor: ConfigEditor) {
+  func setup(keyMapping km: KeyMapping, isSelected: Bool, _ editor: ConfigEditor) {
     self.editor = editor
 
     if keyLabel == nil || actionLabel == nil {
@@ -532,7 +531,7 @@ fileprivate class KeyMappingCell: NSTableCellView {
       spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
       func createActionButton(symbol: String, action: Selector) -> ButtonWithObject {
-        let image = .sf(symbol) ?? NSImage.init(named: symbol)!
+        let image = NSImage.sf(symbol)!
         let button = ButtonWithObject(
           title: "", image: image, target: editor, action: action)
         button.bezelStyle = .circular
@@ -542,7 +541,7 @@ fileprivate class KeyMappingCell: NSTableCellView {
       }
 
       self.editButton = createActionButton(
-        symbol: "gearshape.fill", action: #selector(editor.editKeyMappingAction))
+        symbol: "pencil", action: #selector(editor.editKeyMappingAction))
       self.removeButton = createActionButton(
         symbol: "trash.fill", action: #selector(editor.removeKeyMappingAction))
       self.lockHelpButton = createActionButton(
@@ -575,9 +574,7 @@ fileprivate class KeyMappingCell: NSTableCellView {
       stackView.padding(.vertical, .horizontal(4))
     }
 
-    editButton.isHidden = true
-    removeButton.isHidden = true
-    lockHelpButton.isHidden = true
+    selectionChanged(isSelected)
 
     if Preference.bool(for: .displayKeyBindingRawValues) {
       keyLabel.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
