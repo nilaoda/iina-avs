@@ -12,7 +12,7 @@ import JavaScriptCore
 // MARK: Core API
 
 @objc protocol JavascriptAPICoreExportable: JSExport {
-  func open(_ url: String)
+  func open(_ urlString: String)
   func osd(_ message: String)
   func pause()
   func resume()
@@ -50,8 +50,8 @@ class JavascriptAPICore: JavascriptAPI, JavascriptAPICoreExportable {
     }
   }
 
-  func open(_ url: String) {
-    if let url = parsePath(url, forceLocalPath: false).path {
+  func open(_ urlString: String) {
+    if let url = shouldOpenURL(urlString) {
       Utility.executeOnMainThread {
         player!.openURLString(url)
       }
@@ -206,7 +206,9 @@ fileprivate class TrackAPI: JavascriptAPI, TrackAPIExportable {
       log("loadTrack: the url must be a string", level: .error)
       return
     }
-    let url = URL(fileURLWithPath: urlString)
+    guard let urlString = shouldOpenURL(urlString) else { return }
+    let parsedURL = URL(string: urlString)
+    let url = parsedURL?.scheme == nil ? URL(fileURLWithPath: urlString) : parsedURL!
     switch type {
     case .audio: player!.loadExternalAudioFile(url)
     case .sub, .secondSub: player!.loadExternalSubFile(url)
@@ -238,7 +240,7 @@ fileprivate class WindowAPI: JavascriptAPI, CoreSubAPIExportable {
     case "visible":
       return window.window!.occlusionState.contains(.visible)
     case "sidebar":
-      return window.sideBarStatus == .settings ? window.quickSettingView.currentTab.name : NSNull()
+      return window.sidebars.isShowing(.settings) ? window.sidebars.quickSettingView.currentTab.name : NSNull()
     case "screens":
       let current = window.window!.screen!
       let main = NSScreen.main
@@ -287,15 +289,9 @@ fileprivate class WindowAPI: JavascriptAPI, CoreSubAPIExportable {
       window.setWindowFloatingOnTop(val)
     case "sidebar":
       if let name = value as? String {
-        if let tabType = QuickSettingViewController.TabViewType(name: name) {
-          window.showSettingsSidebar(tab: tabType, force: true, hideIfAlreadyShown: false)
-        } else if let tabType = PlaylistViewController.TabViewType(name: name) {
-          window.showPlaylistSidebar(tab: tabType, force: true, hideIfAlreadyShown: false)
-        } else {
-          log("core.window.sidebar: Unknown sidebar name \"\(name)\"", level: .error)
-        }
+        window.sidebars.show(tab: name, force: true, hideIfAlreadyShown: false)
       } else {
-        window.hideSideBar(animate: true)
+        window.sidebars.hideAllSideBars()
       }
     case "miniaturized":
       guard let val = value as? Bool else { return }

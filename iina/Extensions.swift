@@ -10,6 +10,19 @@ import Cocoa
 import CryptoKit
 import MediaPlayer
 
+extension Array {
+
+  /// Form a string containing the contents of this array suitable for use in a log message.
+  /// - Parameter indent: Number of spaces to indent each line.
+  /// - Returns: Contents of this array formatted for inclusion in a log message.
+  func toStringForLog(indent: Int = 2) -> String {
+    guard !isEmpty else { return "" }
+    let prefix = "\n" + String(repeating: " ", count: indent)
+    let sorted = sorted(by: { "\($0)" < "\($1)" })
+    return prefix + sorted.compactMap({ "\($0)" }).joined(separator: prefix)
+  }
+}
+
 extension CGPoint {
   /**
    Uses the Pythagorean theorem to calculate the distance between two points.
@@ -29,6 +42,32 @@ extension CGPoint {
    */
   func distance(to: CGPoint) -> CGFloat {
     return sqrt(pow(self.x - to.x, 2) + pow(self.y - to.y, 2))
+  }
+}
+
+extension Dictionary where Key: StringProtocol {
+
+  /// Form a string containing the contents of this dictionary suitable for use in a log message.
+  /// - Parameter indent: Number of spaces to indent each line.
+  /// - Returns: Contents of this dictionary formatted for inclusion in a log message.
+  func toStringForLog(indent: Int = 2) -> String {
+    guard !isEmpty else { return "" }
+    var message = ""
+    let prefix = "\n" + String(repeating: " ", count: indent)
+    let sorted = self.sorted( by: { $0.0 < $1.0 })
+    for (key, value) in sorted {
+      message += prefix + key + ": "
+      if let dict = value as? [String: Any] {
+        message += dict.toStringForLog(indent: indent + 2)
+        continue
+      }
+      if let array = value as? [Any] {
+        message += array.toStringForLog(indent: indent + 2)
+        continue
+      }
+      message += "\(value)"
+    }
+    return message
   }
 }
 
@@ -299,7 +338,7 @@ extension NSMenu {
     menuItem.state = stateOn ? .on : .off
     menuItem.isEnabled = enabled
     
-    if let image = image {
+    if let image {
       menuItem.image = .sf(image)
     }
     
@@ -433,21 +472,37 @@ extension NSColor {
     return "\(red)/\(green)/\(blue)/\(alpha)"
   }
 
-  convenience init?(mpvColorString: String) {
-    let splitted = mpvColorString.split(separator: "/").map { (seq) -> Double? in
-      return Double(String(seq))
-    }
-    // check nil
-    if (!splitted.contains {$0 == nil}) {
-      if splitted.count == 3 {  // if doesn't have alpha value
-        self.init(red: CGFloat(splitted[0]!), green: CGFloat(splitted[1]!), blue: CGFloat(splitted[2]!), alpha: CGFloat(1))
-      } else if splitted.count == 4 {  // if has alpha value
-        self.init(red: CGFloat(splitted[0]!), green: CGFloat(splitted[1]!), blue: CGFloat(splitted[2]!), alpha: CGFloat(splitted[3]!))
+  convenience init?(mpvColorString str: String) {
+    // mpv can return hex color string
+    if str.starts(with: "#") {
+      let hex = str.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+      let scanner = Scanner(string: hex)
+      var rgb: UInt64 = 0
+      scanner.scanHexInt64(&rgb)
+
+      // mpv hex colors are #RRGGBB (100% opaque) or #AARRGGBB (alpha first).
+      let a = hex.count <= 6 ? 1.0 : Double((rgb >> 24) & 0xFF) / 255.0
+      let r = Double((rgb >> 16) & 0xFF) / 255
+      let g = Double((rgb >> 8) & 0xFF) / 255
+      let b = Double(rgb & 0xFF) / 255
+
+      self.init(red: r, green: g, blue: b, alpha: a)
+    } else {
+      let splitted = str.split(separator: "/").map { (seq) -> Double? in
+        return Double(String(seq))
+      }
+      // check nil
+      if (!splitted.contains {$0 == nil}) {
+        if splitted.count == 3 {  // if doesn't have alpha value
+          self.init(red: CGFloat(splitted[0]!), green: CGFloat(splitted[1]!), blue: CGFloat(splitted[2]!), alpha: CGFloat(1))
+        } else if splitted.count == 4 {  // if has alpha value
+          self.init(red: CGFloat(splitted[0]!), green: CGFloat(splitted[1]!), blue: CGFloat(splitted[2]!), alpha: CGFloat(splitted[3]!))
+        } else {
+          return nil
+        }
       } else {
         return nil
       }
-    } else {
-      return nil
     }
   }
 }
@@ -584,7 +639,6 @@ extension URL {
 
 
 extension NSTextField {
-
   func setHTMLValue(_ html: String) {
     let font = self.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
     let color = self.textColor ?? NSColor.labelColor
@@ -595,8 +649,16 @@ extension NSTextField {
       self.attributedStringValue = str
     }
   }
-
 }
+
+
+extension NSFont {
+  static func monospacedDigitFont(for size: NSControl.ControlSize) -> NSFont {
+    let fontSize = NSFont.systemFontSize(for: size)
+    return NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .regular)
+  }
+}
+
 
 extension NSImage {
   var cgImage: CGImage? {
@@ -673,9 +735,9 @@ extension NSImage {
   /// Try to find a SF Symbol. This function will iterate through the provided list of SF Symbol name list to and return the
   /// first available SF Symbol at runtime.
   ///
-  /// Use this function only for stock SF Symbol. If a symbol is customized and imported from SF Symbol.app, it is available for all
-  /// systems, so we should use `NSImage(named:)`or the auto generated names by Xcode directly. Preferably, we use stock SF Symbols;
-  /// the next tier is customized and imported SF Symbols; we only use a foreign symbol if that is absolutely necessary.
+  /// Use this function only for stock SF Symbols and imported/customized symbols. If none of the names are found in the
+  /// system symbol catalog, the list of strings will be used to search the bundled symbols. Preferably, use stock SF
+  /// Symbols; the next tier is customized and imported SF Symbols; use a non-SF symbol only if absolutely necessary.
   ///
   /// - Parameters:
   ///   - names: A list name of the SF Symbol. The name requires higher SF Symbol version must be at front, with fallback SF Symbol
@@ -684,6 +746,14 @@ extension NSImage {
   static func sf(_ names: [String], withConfiguration configuration: NSImage.SymbolConfiguration? = nil) -> NSImage? {
     for name in names {
       if let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) {
+        if let configuration, let configured = symbol.withSymbolConfiguration(configuration) {
+          return configured
+        }
+        return symbol
+      }
+    }
+    for name in names {
+      if let symbol = NSImage(named: name) {
         if let configuration, let configured = symbol.withSymbolConfiguration(configuration) {
           return configured
         }
@@ -773,24 +843,38 @@ extension NSScreen {
     }
   }
 
+  /// [CGDirectDisplayID](https://developer.apple.com/documentation/CoreGraphics/CGDirectDisplayID) of the
+  /// display associated with the screen.
+  var displayId: CGDirectDisplayID? {
+    let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+    return deviceDescription[screenNumberKey] as? CGDirectDisplayID
+  }
+
   /// Log the given `NSScreen` object.
-  ///
+  /// 
   /// Due to issues with multiple monitors and how the screen to use for a window is selected detailed logging has been added in this
   /// area in case additional problems are encountered in the future.
-  /// - parameter label: Label to include in the log message.
-  /// - parameter screen: The `NSScreen` object to log.
-  static func log(_ label: String, _ screen: NSScreen?, subsystem: Logger.Subsystem = .general) {
-    guard let screen = screen else {
+  /// - Parameter label: Label to include in the log message.
+  /// - Parameter screen: The `NSScreen` object to log.
+  /// - Parameter details: Whether to include details about the screen (default `true`).
+  /// - Parameter subsystem: The subsystem emitting this message.
+  static func log(_ label: String, _ screen: NSScreen?, details: Bool = true,
+                  subsystem: Logger.Subsystem = .general) {
+    guard let screen else {
       Logger.log("\(label): nil", level: .warning, subsystem: subsystem)
       return
     }
+    guard Logger.isEmitting(.debug) else { return }
     var message = "\(label), \(screen.localizedName)"
     if screen == NSScreen.main {
       message += " (main screen)"
     }
-    let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
-    if let displayId = screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID {
+    if let displayId = screen.displayId {
       message += ", on display \(displayId)"
+    }
+    guard details else {
+      Logger.log(message, subsystem: subsystem)
+      return
     }
     message += ":"
     message += "\n  Frame: \(screen.frame), visible \(screen.visibleFrame)"
@@ -798,13 +882,23 @@ extension NSScreen {
     Logger.log(message, subsystem: subsystem)
   }
 
+  /// Log all screens.
+  /// - Parameter subsystem: The subsystem emitting this message.
+  static func logAll(subsystem: Logger.Subsystem = .general) {
+    guard Logger.isEmitting(.debug) else { return }
+    NSScreen.screens.enumerated().forEach { screen in
+      NSScreen.log("NSScreen.screens[\(screen.offset)]", screen.element, subsystem: subsystem)
+    }
+  }
+
   /// Log EDR aspects of the given `NSScreen` object.
-  /// - parameter screen: The `NSScreen` object to log EDR aspects of.
+  /// - Parameter screen: The `NSScreen` object to log EDR aspects of.
   static func logEDR(_ label: String, _ screen: NSScreen?, subsystem: Logger.Subsystem = .general) {
-    guard let screen = screen else {
+    guard let screen else {
       Logger.log("\(label): nil", level: .warning, subsystem: subsystem)
       return
     }
+    guard Logger.isEmitting(.debug) else { return }
     var message = "\(label), \(screen.localizedName):"
     message += "\n  \(formEDRMessage(screen))"
     Logger.log(message, subsystem: subsystem)
@@ -822,6 +916,18 @@ extension NSScreen {
       """
   }
 }
+
+#if DEBUG
+extension NSUserInterfaceLayoutDirection: @retroactive CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case .leftToRight: return "leftToRight"
+    case .rightToLeft: return "rightToLeft"
+    @unknown default: return String(self.rawValue)
+    }
+  }
+}
+#endif
 
 extension NSWindow {
 
@@ -986,6 +1092,14 @@ extension Timer {
     let timer = Timer(timeInterval: interval, repeats: repeats, block: block)
     RunLoop.main.add(timer, forMode: .common)
     return timer
+  }
+}
+
+extension NSEvent {
+  func inAnyOf(_ views: [NSView?]) -> Bool {
+    return views.compactMap{ $0 }.contains { view in
+      view.isMousePoint(view.convert(locationInWindow, from: nil), in: view.bounds)
+    }
   }
 }
 

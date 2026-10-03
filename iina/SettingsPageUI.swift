@@ -6,12 +6,14 @@
 //  Copyright © 2025 lhc. All rights reserved.
 //
 
+fileprivate let ui = SettingsUIHelper.sharedUI
+
 class SettingsPageUI: SettingsPage {
-  private lazy var windowInitialSizeView: WindowInitialSizeView = WindowInitialSizeView(l10n: localizationContext, geometryBindings: geometryBindings)
-  private lazy var windowInitialPositionView: WindowInitialPositionView = WindowInitialPositionView(l10n: localizationContext, geometryBindings: geometryBindings)
-  private lazy var resizeWindowView: ResizeWindowView = ResizeWindowView(l10n: localizationContext)
-  private lazy var oscLayoutView: OSCLayoutView = OSCLayoutView(l10n: localizationContext)
-  private lazy var oscToolbarView: OSCToolbarView = OSCToolbarView(l10n: localizationContext)
+  private lazy var windowInitialSizeView: WindowInitialSizeView = WindowInitialSizeView(geometryBindings: geometryBindings)
+  private lazy var windowInitialPositionView: WindowInitialPositionView = WindowInitialPositionView(geometryBindings: geometryBindings)
+  private lazy var resizeWindowView: ResizeWindowView = ResizeWindowView()
+  private lazy var oscLayoutView: OSCLayoutView = OSCLayoutView()
+  private lazy var oscToolbarView: OSCToolbarView = OSCToolbarView()
 
   private lazy var geometryBindings = GeometryBindings()
 
@@ -29,6 +31,10 @@ class SettingsPageUI: SettingsPage {
 
   override var localizationTable: String {
     "SettingsUILocalizable"
+  }
+
+  override var helpInfo: String? {
+    ui.localized("more_ui_settings")
   }
 
   override func pageLoaded() {
@@ -53,6 +59,21 @@ class SettingsPageUI: SettingsPage {
         SettingsItem.PopupButton()
           .image(name: "moonphase.first.quarter")
           .bindTo(.themeMaterial, ofType: Preference.Theme.self)
+        if #available(macOS 26.0, *) { 
+          SettingsItem.General(title: .general("sidebar.liquid_glass"))
+            .image(name: ["capsule.on.rectangle.liquid.glass", "liquid.glass"])
+            .withExpandingDetailView {
+              SettingsItem.Switch(title: .text_OnScreenDisplay)
+                .bindTo(.useLiquidGlassOSD)
+              SettingsItem.Switch(title: .text_OnScreenController)
+                .bindTo(.useLiquidGlassOSC)
+              SettingsItem.Switch(title: .general("sidebar.sidebar"))
+                .bindTo(.useLiquidGlassSidebar)
+            }
+        }
+        SettingsItem.Switch(title: .general("sidebar.compact_interface"))
+          .image(name: "rectangle.grid.3x2.fill")
+          .bindTo(.compactUI)
       }
     }
   }
@@ -115,9 +136,12 @@ class SettingsPageUI: SettingsPage {
         SettingsItem.PopupButton()
           .image(name: "forward.fill")
           .bindTo(.arrowButtonAction, ofType: Preference.ArrowButtonAction.self)
-        SettingsItem.Input()
+        SettingsItem.SwitchWithInput()
           .image(name: "timer")
-          .bindTo(.controlBarAutoHideTimeout)
+          .labelKey(.controlBarAutoHideTimeout)
+          .bindInputTo(.controlBarAutoHideTimeout)
+          .bindSwitchTo(.enableControlBarAutoHide)
+          .range(0...Double(Int.max), allowsFloats: true)
           .trailingLabel(.text_s)
       }
 
@@ -167,10 +191,12 @@ class SettingsPageUI: SettingsPage {
         SettingsItem.Input(title: .controlBarAutoHideTimeoutLabel)
           .image(name: "timer")
           .bindTo(.osdAutoHideTimeout)
+          .range(0...Double(Int.max), allowsFloats: true)
           .trailingLabel(.text_s)
         SettingsItem.Input()
           .image(name: "textformat.size")
           .bindTo(.osdTextSize)
+          .range(1...500)
           .trailingLabel(.text_pt)
         SettingsItem.Switch()
           .image(name: "info.bubble")
@@ -188,11 +214,13 @@ class SettingsPageUI: SettingsPage {
           .withDetailView {
             SettingsItem.Input()
               .bindTo(.maxThumbnailPreviewCacheSize)
+              .range(0...Double(Int.max))
               .trailingLabel(.text_MB)
             SettingsItem.Switch()
               .bindTo(.enableThumbnailForRemoteFiles)
             SettingsItem.Input()
               .bindTo(.thumbnailWidth)
+              .range(1...2000)
               .trailingLabel(.text_pt)
               .hasDescription()
           }
@@ -247,7 +275,8 @@ fileprivate let SideBottomTag = 1
 
 
 fileprivate class GeometryBindings: NSObject {
-  let key = Preference.Key.initialWindowSizePosition.rawValue
+  private let key = Preference.Key.initialWindowSizePosition
+  private let prefObserver = Preference.Observer()
 
   var windowSizeSwitch: SettingsItem.Switch!
   var windowSizeSide: NSPopUpButton!
@@ -264,11 +293,9 @@ fileprivate class GeometryBindings: NSObject {
 
   override init() {
     super.init()
-    UserDefaults.standard.addObserver(self, forKeyPath: key, options: [.new, .old], context: nil)
-  }
-
-  deinit {
-    UserDefaults.standard.removeObserver(self, forKeyPath: key)
+    prefObserver.add(key) { [unowned self] _ in
+      updateControls()
+    }
   }
 
   func initControl<T>(_ keyPath: ReferenceWritableKeyPath<GeometryBindings, T?>, _ value: T) {
@@ -339,21 +366,13 @@ fileprivate class GeometryBindings: NSObject {
       windowPosSwitch.setIsOn(false)
     }
   }
-
-  override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-    guard !(change?[NSKeyValueChangeKey.oldKey] is NSNull) else { return }
-
-    updateControls()
-  }
 }
 
 
-fileprivate class WindowInitialSizeView: WithSettingsLocalizationContext, SettingsContainer {
+fileprivate class WindowInitialSizeView: SettingsContainer {
   lazy var itemID = SettingsContainerUUID.next()
-  var l10n: SettingsLocalization.Context!
   let container: NSView
   let view: NSStackView
-  lazy var ui: SettingsUIHelper = SettingsUIHelper(l10n)
 
   lazy var popupButtonDim: NSPopUpButton = ui.popupButton([
     (.text_Width, 0), (.text_Height, 1)
@@ -365,8 +384,7 @@ fileprivate class WindowInitialSizeView: WithSettingsLocalizationContext, Settin
 
   lazy var textField: NSTextField = ui.textInput(value: "1280", width: 64)
 
-  init(l10n: SettingsLocalization.Context, geometryBindings: GeometryBindings) {
-    self.l10n = l10n
+  init(geometryBindings: GeometryBindings) {
     self.container = NSView()
     self.view = NSStackView()
     self.view.translatesAutoresizingMaskIntoConstraints = false
@@ -385,18 +403,16 @@ fileprivate class WindowInitialSizeView: WithSettingsLocalizationContext, Settin
     view.padding(.bottom(8), .top(0), .leading(SettingsSubList.indent), .trailing(0))
   }
 
-  func makeView(context: SettingsLocalization.Context) -> NSView {
+  func makeView() -> NSView {
     return container
   }
 }
 
 
-fileprivate class WindowInitialPositionView: WithSettingsLocalizationContext, SettingsContainer {
+fileprivate class WindowInitialPositionView: SettingsContainer {
   lazy var itemID = SettingsContainerUUID.next()
-  var l10n: SettingsLocalization.Context!
   let container: NSView
   let view: NSStackView
-  lazy var ui: SettingsUIHelper = SettingsUIHelper(l10n)
 
   lazy var popupButtonXPos: NSPopUpButton = ui.popupButton([
     (.text_top, 0), (.text_bottom, 1)
@@ -418,8 +434,7 @@ fileprivate class WindowInitialPositionView: WithSettingsLocalizationContext, Se
 
   lazy var textFieldY: NSTextField = ui.textInput(value: "20", width: 64)
 
-  init(l10n: SettingsLocalization.Context, geometryBindings: GeometryBindings) {
-    self.l10n = l10n
+  init(geometryBindings: GeometryBindings) {
     self.container = NSView()
     self.view = NSStackView()
     self.view.translatesAutoresizingMaskIntoConstraints = false
@@ -427,16 +442,16 @@ fileprivate class WindowInitialPositionView: WithSettingsLocalizationContext, Se
     self.view.alignment = .leading
 
     view.addArrangedSubview(
-      ui.hStack(align: .firstBaseline, ui.image("arrow.left.to.line"), ui.label(.text_XOffset), textFieldX, popupButtonXUnit)
+      ui.hStack(align: .firstBaseline, ui.image("arrow.left.to.line"), ui.smallLabel(bindTo: .text_XOffset), textFieldX, popupButtonXUnit)
     )
     view.addArrangedSubview(
-      ui.hStack(align: .firstBaseline, ui.space(width: 16), ui.label(.text_toThe), popupButtonXPos, ui.label(.text_sideOfTheScreen))
+      ui.hStack(align: .firstBaseline, ui.space(width: 16), ui.smallLabel(bindTo: .text_toThe), popupButtonXPos, ui.smallLabel(bindTo: .text_sideOfTheScreen))
     )
     view.addArrangedSubview(
-      ui.hStack(align: .firstBaseline, ui.image("arrow.up.to.line"), ui.label(.text_YOffset), textFieldY, popupButtonYUnit)
+      ui.hStack(align: .firstBaseline, ui.image("arrow.up.to.line"), ui.smallLabel(bindTo: .text_YOffset), textFieldY, popupButtonYUnit)
     )
     view.addArrangedSubview(
-      ui.hStack(align: .firstBaseline, ui.space(width: 16), ui.label(.text_toThe), popupButtonYPos, ui.label(.text_sideOfTheScreen))
+      ui.hStack(align: .firstBaseline, ui.space(width: 16), ui.smallLabel(bindTo: .text_toThe), popupButtonYPos, ui.smallLabel(bindTo: .text_sideOfTheScreen))
     )
 
     container.addSubview(view)
@@ -450,21 +465,18 @@ fileprivate class WindowInitialPositionView: WithSettingsLocalizationContext, Se
     geometryBindings.initControl(\.windowPosYOffset, textFieldY)
   }
 
-  func makeView(context: SettingsLocalization.Context) -> NSView {
+  func makeView() -> NSView {
     return container
   }
 }
 
 
-fileprivate class ResizeWindowView: WithSettingsLocalizationContext, SettingsContainer {
+fileprivate class ResizeWindowView: SettingsContainer {
   lazy var itemID = SettingsContainerUUID.next()
-  var l10n: SettingsLocalization.Context!
-  lazy var ui: SettingsUIHelper = SettingsUIHelper(l10n)
 
   let view: NSView
 
-  init(l10n: SettingsLocalization.Context) {
-    self.l10n = l10n
+  init() {
     self.view = NSView()
     let buttons = ui.radioGroup(.resizeWindowTiming, size: .regular, [
       (.text_AlwaysWhenPlaying, 0), (.text_WhenMediaIsOpenedManually, 1), (.text_DoNotResize, 2)
@@ -477,30 +489,27 @@ fileprivate class ResizeWindowView: WithSettingsLocalizationContext, SettingsCon
     SettingsUIHelper.vEquallySpaced(buttons, 8, top: 0, bottom: 12)
   }
 
-  func makeView(context: SettingsLocalization.Context) -> NSView {
+  func makeView() -> NSView {
     return view
   }
 }
 
 
-fileprivate class OSCLayoutView: WithSettingsLocalizationContext, SettingsContainer {
+fileprivate class OSCLayoutView: SettingsContainer {
   lazy var itemID = SettingsContainerUUID.next()
-  var l10n: SettingsLocalization.Context!
-  lazy var ui: SettingsUIHelper = SettingsUIHelper(l10n)
 
   let view: NSView
   let imageViews: [NSImageView]
 
-  init(l10n: SettingsLocalization.Context) {
-    self.l10n = l10n
+  init() {
     self.view = NSView()
     let container = NSView()
     container.translatesAutoresizingMaskIntoConstraints = false
 
     self.imageViews = [
-      NSImageView(image: .init(named: "osc_float")!),
-      NSImageView(image: .init(named: "osc_top")!),
-      NSImageView(image: .init(named: "osc_bottom")!),
+      NSImageView(image: .sf("osc_float_figure")!),
+      NSImageView(image: .sf("osc_top_figure")!),
+      NSImageView(image: .sf("osc_bottom_figure")!),
     ]
 
     imageViews.forEach { iv in
@@ -529,7 +538,7 @@ fileprivate class OSCLayoutView: WithSettingsLocalizationContext, SettingsContai
     container.padding(.vertical).center(.x)
   }
 
-  func makeView(context: SettingsLocalization.Context) -> NSView {
+  func makeView() -> NSView {
     return view
   }
 }
@@ -543,10 +552,10 @@ private class OSCToolbarView: SettingsContainer {
   let customizeButton: NSButton
   private let toolbarSettingsSheetController = PrefOSCToolbarSettingsSheetController()
 
-  init(l10n: SettingsLocalization.Context) {
+  init() {
     self.view = NSView()
     self.oscToolbarStackView = NSStackView()
-    self.customizeButton = NSButton(title: l10n.localized(.text_Customize), target: nil, action: nil)
+    self.customizeButton = NSButton(title: ui.localized(.text_Customize), target: nil, action: nil)
   }
 
   private func updateOSCToolbarButtons() {
@@ -574,7 +583,7 @@ private class OSCToolbarView: SettingsContainer {
     }
   }
 
-  func makeView(context: SettingsLocalization.Context) -> NSView {
+  func makeView() -> NSView {
     let container = NSView()
     container.translatesAutoresizingMaskIntoConstraints = false
 

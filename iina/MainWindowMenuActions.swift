@@ -11,23 +11,23 @@ import Cocoa
 extension MainWindowController {
 
   @objc func menuShowPlaylistPanel(_ sender: NSMenuItem) {
-    showPlaylistSidebar(tab: .playlist)
+    sidebars.show(tab: "playlist")
   }
 
   @objc func menuShowChaptersPanel(_ sender: NSMenuItem) {
-    showPlaylistSidebar(tab: .chapters)
+    sidebars.show(tab: "chapters")
   }
 
   @objc func menuShowVideoQuickSettings(_ sender: NSMenuItem) {
-    showSettingsSidebar(tab: .video)
+    sidebars.show(tab: "video")
   }
 
   @objc func menuShowAudioQuickSettings(_ sender: NSMenuItem) {
-    showSettingsSidebar(tab: .audio)
+    sidebars.show(tab: "audio")
   }
 
   @objc func menuShowSubQuickSettings(_ sender: NSMenuItem) {
-    showSettingsSidebar(tab: .sub)
+    sidebars.show(tab: "sub")
   }
 
   @objc func menuChangeWindowSize(_ sender: NSMenuItem) {
@@ -39,7 +39,7 @@ extension MainWindowController {
     //  10: smaller size
     //  11: bigger size
     let size = sender.tag
-    guard let window = window, !fsState.isFullscreen else { return }
+    guard let window, !fsState.isFullscreen else { return }
 
     let screenFrame = (window.screen ?? NSScreen.main!).visibleFrame
     let newFrame: NSRect
@@ -102,8 +102,8 @@ extension MainWindowController {
         player.info.delogoFilter = nil
       }
     } else {
-      self.hideSideBar {
-        self.enterInteractiveMode(.freeSelecting)
+      self.sidebars.hideAllSideBars {
+        self.interactiveMode.enter(mode: .delogo)
       }
     }
   }

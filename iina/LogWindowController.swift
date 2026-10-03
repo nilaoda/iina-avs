@@ -29,7 +29,6 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
   private let tableView = NSTableView()
   private let scrollView = NSScrollView()
 
-  @Atomic private var buffer: [Logger.Log] = []
   @objc private dynamic var logs: [Logger.Log] = []
   private let arrayController = NSArrayController()
   private var isWindowVisible: Bool {
@@ -45,6 +44,9 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
       guard let button = toolbarItem(withID: .followButton) else { return }
       let symbolName = following ? "arrow.up.left.circle.fill" : "arrow.up.left.circle"
       button.image = .sf(symbolName)
+      if #available(macOS 26, *) {
+        button.style = following ? .prominent : .plain
+      }
     }
   }
   private var filteredLogLevel = Logger.Level.preferred {
@@ -55,6 +57,15 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
   private var filteredSubsystems = Set<String>() {
     didSet {
       updatePredicate()
+      if #available(macOS 26, *) {
+        let item = toolbarItem(withID: .subsystemButton)!
+        let filteredCount = filteredSubsystems.count
+        if filteredCount != 0 {
+          item.badge = .count(filteredCount)
+        } else {
+          item.badge = nil
+        }
+      }
     }
   }
   private let searchField = NSSearchField()
@@ -79,11 +90,12 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
   private var hasSetup = false
 
   convenience init() {
-    let window = NSWindow(
+    let window = CommonWindow(
         contentRect: NSRect(origin: .zero, size: NSSize(width: 800, height: 500)),
         styleMask: [.titled, .closable, .miniaturizable, .resizable],
         backing: .buffered,
-        defer: false
+        defer: false,
+        usesUnifiedToolbar: true
     )
     window.minSize = NSMakeSize(800, 500)
     window.title = NSLocalizedString("logwindow.title", comment: "Log Viewer")
@@ -106,6 +118,7 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
 
       NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged(_:)),
                                              name: NSWindow.didChangeOcclusionStateNotification, object: window)
+      NotificationCenter.default.addObserver(self, selector: #selector(scheduleFlush), name: .iinaLogAppended, object: nil)
 
       let toolbar = NSToolbar(identifier: "iina.logWindow.toolbar")
       toolbar.delegate = self
@@ -148,12 +161,9 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
     tableView.allowsColumnReordering = false
     tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
 
-    tableView.menu = NSMenu()
-    let copyItem = NSMenuItem(title: NSLocalizedString("logwindow.copy", comment: "Copy"), action: #selector(menuCopy), keyEquivalent: "")
-    if #available(macOS 26, *) {
-      copyItem.image = .sf("document.on.document")
-    }
-    tableView.menu?.addItem(copyItem)
+    let tableViewMenu = NSMenu()
+    tableViewMenu.addItem(withTitle: NSLocalizedString("logwindow.copy", comment: "Copy"), action: #selector(menuCopy), keyEquivalent: "")
+    tableView.menu = tableViewMenu
 
     func makeColumn(key: String, minWidth: CGFloat? = nil, maxWidth: CGFloat? = nil, noTitle: Bool = false) -> NSTableColumn {
       let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(key))
@@ -401,17 +411,8 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
     updatePredicate()
   }
 
-  func append(_ log: Logger.Log) {
-    $buffer.withLock {
-      $0.append(log)
-    }
-    if isWindowVisible {
-      scheduleFlush()
-    }
-  }
-
-  private func scheduleFlush() {
-    guard flushTimer == nil else { return }
+  @objc private func scheduleFlush() {
+    guard flushTimer == nil && isWindowVisible else { return }
     flushTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { [weak self] _ in
       self?.flushTimer = nil
       self?.flushBuffer()
@@ -419,7 +420,7 @@ class LogWindowController: NSWindowController, NSMenuDelegate, NSToolbarDelegate
   }
 
   private func flushBuffer() {
-    let toFlush: [Logger.Log] = $buffer.withLock {
+    let toFlush: [Logger.Log] = Logger.$buffer.withLock {
       let copy = $0
       $0.removeAll(keepingCapacity: true)
       return copy
