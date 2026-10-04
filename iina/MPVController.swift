@@ -402,6 +402,15 @@ class MPVController: NSObject {
                   level: .verbose)
     setUserOption(PK.maxVolume, type: .int, forName: MPVOption.Audio.volumeMax, level: .verbose)
 
+    // This visible default also applies when other advanced options are disabled.
+    // Editing or removing its row in the extra mpv options controls the value.
+    if let options = Preference.value(for: .userOptions) as? [[String]],
+       let downmix = options.last(where: {
+         $0.count == 2 && $0[0] == MPVOption.AudioResampler.audioNormalizeDownmix
+       }) {
+      chkErr(setOptionString(downmix[0], downmix[1], level: .verbose))
+    }
+
     let spdifValue = { (key: Preference.Key) -> String in
       var spdif: [String] = []
       if Preference.bool(for: PK.spdifAC3) { spdif.append("ac3") }

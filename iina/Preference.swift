@@ -1232,7 +1232,7 @@ struct Preference {
     .enableLogging: false,
     .logLevel: Logger.Level.debug.rawValue,
     .displayKeyBindingRawValues: false,
-    .userOptions: [[String]](),
+    .userOptions: [[MPVOption.AudioResampler.audioNormalizeDownmix, "yes"]],
     .useUserDefinedConfDir: false,
     .userDefinedConfDir: "~/.config/mpv/",
     .iinaEnablePluginSystem: false,
@@ -1611,7 +1611,7 @@ struct Preference {
         defaultAsString = String(describing: SeekOption.defaultValue)
         valueAsString = String(describing: Preference.enum(for: key) as SeekOption)
       case.userOptions:
-        defaultAsString = "[]"
+        defaultAsString = String(describing: defaultPreference[.userOptions] as? [[String]] ?? [])
         guard let valueAsArray = value as? [[String]] else {
           // Should not occur. Internal error.
           log("Default for \(key) is of type \(type(of: value)) and cannot be cast to [[String]]",

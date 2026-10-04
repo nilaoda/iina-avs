@@ -252,6 +252,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     // Check for legacy pref entries and migrate them to their modern equivalents.
     LegacyMigration.shared.migrateLegacyPreferences()
     LegacyMigration.shared.migrateToneMappingTargetPeak()
+    LegacyMigration.shared.migrateAudioNormalizeDownmixOption()
 
     // guide window
     switch InfoDictionary.shared.buildType {
