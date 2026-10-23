@@ -3,7 +3,7 @@
 ## 版本与代码状态
 
 - IINA：合入上游 `v1.5.0`，保留 AVS 分支的自定义 libmpv gpu-next 渲染和截图设置。
-- FFmpeg：`9.0.1`；mpv：`v0.41.0`，继续应用本地 Render API gpu-next 补丁。
+- FFmpeg：`9.0.2`；mpv：`v0.41.0`，继续应用本地 Render API gpu-next 补丁。
 - 上游 mpv 的 gpu-next Render API PR [#16818](https://github.com/mpv-player/mpv/pull/16818) 在本次检查时仍未合并。
 - 两个升级分支分别为 `feature/iina-1.5-ffmpeg-9` 和 `feature/ffmpeg-9.0.1`。
 
@@ -13,9 +13,15 @@
 2. 在 `iina-avs` 推送经确认的升级代码后，运行 **Build IINA from custom libmpv bundle**，`bundle_repo` 使用 `nilaoda/mpv-iina-avs`，`bundle_tag` 填第一步的 tag。首次验证建议 `publish_release=false`。
 3. 下载两种架构的 IINA 产物，验证启动、正常播放、AVS 系列及 Audio Vivid、HDR/Dolby Vision、PNG/JXL/AVIF 截图。
 
-依赖包必须包含 FFmpeg 9.0.1 的动态库、对应头文件和 `bundle.json`。旧版 8.1 release 不能用于新工作流；留空 `bundle_tag` 会选择 latest，首次运行应明确指定新 tag。
+依赖包必须包含 FFmpeg 9.0.2 的动态库、对应头文件和 `bundle.json`。旧版 9.0.1 / 8.1 release 不能用于当前配置；留空 `bundle_tag` 会选择 latest，首次运行应明确指定新 tag。
 
 `other/custom_bundle.py` 在编译前验证版本、架构和动态库依赖，同步对应头文件并生成 Xcode 动态库引用。构建后再次验证 app。FFmpeg ABI 为 avcodec/avformat/avdevice 63、avutil 61、avfilter 12、swresample 7、swscale 10。
+
+## 2026-10-23 更新
+
+- 合入上游 `develop` 至 `7f2c7673`，保留 AVS 分支的渲染、截图、色彩映射、下混归一化和 SDK 兼容改动。
+- 工作流和依赖校验脚本默认使用 FFmpeg 9.0.2，等待 `mpv-iina-avs` 构建并发布对应的双架构依赖包后进行完整 IINA 构建验证。
+- FFmpeg 9.0.2 已通过 6 个自定义补丁应用、精简 arm64 编译、AV3A 解析回归及 AVS+ / DRA 短样本解码；以下为此前 9.0.1 的完整本地验证记录。
 
 ## 已完成的本地验证
 

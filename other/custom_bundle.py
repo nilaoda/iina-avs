@@ -164,7 +164,7 @@ def main():
     command.add_argument('--bundle', type=Path, required=True)
     command.add_argument('--repo', type=Path, default=Path(__file__).resolve().parent.parent)
     command.add_argument('--arch', choices=('arm64', 'x86_64'), required=True)
-    command.add_argument('--ffmpeg-version', default='9.0.1')
+    command.add_argument('--ffmpeg-version', default='9.0.2')
     command.add_argument('--mpv-ref', default='v0.41.0')
     command.set_defaults(run=prepare)
     command = commands.add_parser('verify-app')

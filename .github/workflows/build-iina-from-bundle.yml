@@ -38,7 +38,7 @@ on:
         type: string
 
 env:
-  FFMPEG_VERSION: '9.0.1'
+  FFMPEG_VERSION: '9.0.2'
   MPV_VERSION: 'v0.41.0'
   LICENSE_FLAVOR: gpl
 
