@@ -402,13 +402,21 @@ class MPVController: NSObject {
                   level: .verbose)
     setUserOption(PK.maxVolume, type: .int, forName: MPVOption.Audio.volumeMax, level: .verbose)
 
-    // This visible default also applies when other advanced options are disabled.
-    // Editing or removing its row in the extra mpv options controls the value.
+    // This custom backend option limits peaks after downmix without a fixed gain cut.
+    let limiterStatus = setOptionString("audio-limit-downmix", "yes", level: .verbose)
+    if limiterStatus < 0 {
+      log("Downmix limiter unavailable; update the custom libmpv bundle", level: .warning)
+    }
+
+    // Preserve explicit downmix settings even when other advanced options are disabled.
     if let options = Preference.value(for: .userOptions) as? [[String]],
        let downmix = options.last(where: {
          $0.count == 2 && $0[0] == MPVOption.AudioResampler.audioNormalizeDownmix
        }) {
       chkErr(setOptionString(downmix[0], downmix[1], level: .verbose))
+    } else if limiterStatus < 0 {
+      // Old bundles cannot safely limit downmix peaks; retain their previous protection.
+      chkErr(setOptionString(MPVOption.AudioResampler.audioNormalizeDownmix, "yes", level: .verbose))
     }
 
     let spdifValue = { (key: Preference.Key) -> String in

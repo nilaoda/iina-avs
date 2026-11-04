@@ -22,15 +22,18 @@ class LegacyMigration {
   /// The `LegacyMigration` singleton object.
   static var shared = LegacyMigration()
 
-  /// Add the downmix default once, preserving existing values and later edits or removal.
+  /// Remove the old injected default once; preserve other values and later edits.
   func migrateAudioNormalizeDownmixOption() {
-    let migratedKey = Preference.Key("didMigrateAudioNormalizeDownmixOption")
-    guard !Preference.bool(for: migratedKey),
-          var options = Preference.value(for: .userOptions) as? [[String]] else { return }
-    let name = MPVOption.AudioResampler.audioNormalizeDownmix
-    if !options.contains(where: { $0.first == name }) {
-      options.append([name, "yes"])
-      Preference.set(options, for: .userOptions)
+    let migratedKey = Preference.Key("didRemoveAudioNormalizeDownmixDefault")
+    guard !Preference.bool(for: migratedKey) else { return }
+    let oldMigrationKey = Preference.Key("didMigrateAudioNormalizeDownmixOption")
+    if Preference.bool(for: oldMigrationKey),
+       let options = Preference.value(for: .userOptions) as? [[String]] {
+      let oldDefault = [MPVOption.AudioResampler.audioNormalizeDownmix, "yes"]
+      let remaining = options.filter { $0 != oldDefault }
+      if remaining != options {
+        Preference.set(remaining, for: .userOptions)
+      }
     }
     Preference.set(true, for: migratedKey)
   }

@@ -1232,7 +1232,7 @@ struct Preference {
     .enableLogging: false,
     .logLevel: Logger.Level.debug.rawValue,
     .displayKeyBindingRawValues: false,
-    .userOptions: [[MPVOption.AudioResampler.audioNormalizeDownmix, "yes"]],
+    .userOptions: [[String]](),
     .useUserDefinedConfDir: false,
     .userDefinedConfDir: "~/.config/mpv/",
     .iinaEnablePluginSystem: false,

@@ -49,6 +49,7 @@ def validate_bundle(root, arch, ffmpeg_version, mpv_ref):
     expected = {
         'schema_version': 1, 'arch': arch, 'ffmpeg_version': ffmpeg_version,
         'mpv_ref': mpv_ref, 'render_backend': 'gpu-next',
+        'audio_limit_downmix': True,
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
