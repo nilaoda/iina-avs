@@ -9,8 +9,6 @@
 
 "general.on" = "Açık";
 "general.off" = "Kapalı";
-"general.login" = "Oturum Aç";
-"general.logout" = "Oturumu Kapat";
 "general.ok" = "Tamam";
 "general.cancel" = "Vazgeç";
 "general.done" = "Bitti";
@@ -30,14 +28,81 @@
 "guide.faq" = "Sık Sorulan Sorular";
 
 // Initial Window
-"initial.announcement" = "Şu an IINA'nın %@ BETA sürümünü kullanıyorsunuz";
+"initial.announcement" = "Şu anda IINA’nın bir beta sürümünü kullanıyorsunuz";
 "initial.beta.desc" = "Lütfen “Ayarlar” → “Genel” sekmesinden “Beta güncellemeleri al” seçeneğini kapatın ve <a href=\"https://iina.io\">resmi sitemizden</a> kararlı son sürümü indirin.";
 "initial.nightly.desc" = "Gecelik sürüm, günlük kullanım için tavsiye edilmez. Şu anda gecelik yapılar kendiliğinden güncellenmeyi desteklememektedir. Daha yeni yapıları elle <a href=\"https://nightly.iina.io\">gecelik sürüm web sitemizden</a> indirebilirsiniz.";
 "initial.debug.desc" = "Hata ayıklama amaçlı derlenmiş sürümler genellikle performans açısından optimize edilmediğinden günlük olarak kullanılması önerilmez. Hata ayıklama amaçlı sürümler otomatik güncellemeyi desteklemez.";
 "initial.bug_report" = "<a href=\"https://github.com/iina/iina/issues\">GitHub issues</a>. web sitesine raporlayabilirsiniz.";
+"initial.rollback" = "Lütfen “Tercihler” → “Genel” sekmesinden “Beta güncellemeleri al”ı kapatın ve <a href=\"https://iina.io\">resmi IINA sitesinden</a> kararlı son yayımı indirin.";
+"initial.open_url" = "URL Aç…";
+"initial.found_bug" = "Bir hata mı buldunuz?";
+"initial.resume" = "Sürdür:";
+"initial.open" = "Aç…";
+"initial.want_to_rollback" = "Eski sürüme dönmek mi istiyorsunuz?";
 
 // Inspector Window
 "inspector.error" = "Hata";
+"inspector.window_title" = "Denetçi";
+"inspector.tab_general" = "Genel";
+"inspector.tab_tracks" = "Parçalar";
+"inspector.tab_file" = "Dosya";
+"inspector.tab_status" = "Durum";
+"inspector.segment_general" = "Genel";
+"inspector.segment_tracks" = "Parçalar";
+"inspector.segment_file" = "Dosya";
+"inspector.segment_status" = "Durum";
+"inspector.video_section" = "VİDEO";
+"inspector.video_format" = "Biçim";
+"inspector.video_codec" = "Kodlayıcı";
+"inspector.video_hw_decoder" = "Donanım çözücüsü";
+"inspector.video_primaries" = "Ana renkler";
+"inspector.video_colorspace" = "Renk uzayı";
+"inspector.video_pixel_format" = "Piksel Biçimi";
+"inspector.video_driver" = "Sürücü";
+"inspector.video_size" = "Boyut";
+"inspector.video_bitrate" = "Bit hızı";
+"inspector.video_fps" = "FPS";
+"inspector.audio_section" = "SES";
+"inspector.audio_format" = "Biçim";
+"inspector.audio_codec" = "Kodlayıcı";
+"inspector.audio_driver" = "Sürücü";
+"inspector.audio_channels" = "Kanallar";
+"inspector.audio_bitrate" = "Bit hızı";
+"inspector.audio_sample_rate" = "Örnekleme hızı";
+"inspector.track_label" = "Parça";
+"inspector.track_id" = "Kimlik";
+"inspector.track_properties" = "Özellikler";
+"inspector.track_default" = "Saptanmış";
+"inspector.track_forced" = "Zorlanmış";
+"inspector.track_selected" = "Seçili";
+"inspector.track_external" = "Dış";
+"inspector.track_source_id" = "Kaynak kimliği";
+"inspector.track_title" = "Başlık";
+"inspector.track_language" = "Dil";
+"inspector.track_file_path" = "Dosya yolu";
+"inspector.track_codec" = "Kodlayıcı";
+"inspector.track_decoder" = "Çözücü";
+"inspector.track_fps" = "FPS";
+"inspector.track_channels" = "Kanallar";
+"inspector.track_sample_rate" = "Örnekleme hızı";
+"inspector.file_path" = "Dosya yolu";
+"inspector.file_title" = "Başlık";
+"inspector.file_comment" = "Comment";
+"inspector.file_size" = "Boyut";
+"inspector.file_format" = "Biçim";
+"inspector.file_duration" = "Süre";
+"inspector.file_chapters" = "Fasıllar";
+"inspector.file_editions" = "Sürümler";
+"inspector.status_avsync_diff" = "A/V eşzamanlama farkı";
+"inspector.status_total_avsync" = "Toplam A/V eşzamanlaması";
+"inspector.status_dropped_frames" = "Atlanan kareler";
+"inspector.status_mistimed_frames" = "Zamanlama hatası olan kareler";
+"inspector.status_display_fps" = "Görüntü FPS’si";
+"inspector.status_estimated_output_fps" = "Tahmini çıktı FPS’si";
+"inspector.status_estimated_display_fps" = "Tahmini Görüntü FPS’si";
+"inspector.status_watch" = "İzle";
+"inspector.watch_column_name" = "Ad";
+"inspector.watch_column_value" = "Değer";
 
 // MainWindowController.swift
 "main.buffering_indicator" = "Arabelleğe alınıyor... %%%d";
@@ -153,8 +218,6 @@
 "preference.title" = "Tercihler";
 "preference.general" = "Genel";
 "preference.ui" = "Arayüz";
-"preference.video_audio" = "Görüntü ve Ses";
-"preference.subtitle" = "Altyazı";
 "preference.network" = "Ağ";
 "preference.control" = "Denetimler";
 "preference.keybindings" = "Tuş Bağıntıları";
@@ -162,29 +225,6 @@
 "preference.plugins" = "Eklentiler";
 "preference.utilities" = "İzlenceler";
 "preference.scripts" = "Betikler";
-"preference.not_logged_in" = "Oturum açılmadı";
-"preference.logged_in_as" = "%@ olarak oturum açıldı";
-"preference.system_media_control" = "Sistem ortam denetim tuşlarını kullan";
-
-"preference.key_binding_hint_1" = "Geçerli yapılandırma dosyasındaki kestirmeleri düzenlemek için önce “Çoğalt…” düğmesine tıklayarak bir kopya oluşturun.";
-"preference.key_binding_hint_2" = "İlgili kestirmeyi düzenlemek için sağ taraftaki bir satıra çift tıklayın.";
-
-"preference.enable_adv_settings" = "Gelişmiş ayarları etkinleştir";
-
-"preference.sub_override_level.no" = "hayır";
-"preference.sub_override_level.force" = "zorla";
-"preference.sub_override_level.scale" = "ölçekle";
-"preference.sub_override_level.strip" = "sıyır";
-"preference.sub_override_level.yes" = "evet";
-
-"preference.sub_override_level.descriptive_text.no" = "Altyazıları, altyazı betiğinde belirtildiği gibi gösterin, zorlama olmadan.";
-"preference.sub_override_level.descriptive_text.force" = "Tüm altyazı stillerini uygulayın.";
-"preference.sub_override_level.descriptive_text.scale" = "Bu bölümdeki stil ayarlarına ek olarak ölçek ayarını uygulayın.";
-"preference.sub_override_level.descriptive_text.strip" = "Altyazıdan tüm ASS etiketlerini tümüyle çıkarın.";
-"preference.sub_override_level.descriptive_text.yes" = "Bu bölümdeki tüm stil ayarlarını uygulayın.";
-
-"preference.ytdl_plugin_not_installed" = "“Eklentiler” → “GitHub’dan Yükle” yolunu izleyerek Online Media eklentisini kurun ve video indirme ve kendiliğinden yt-dlp güncellemelerini indirme gibi gelişmiş özelliklerin keyfini çıkarın.";
-"preference.ytdl_plugin_installed" = "Online Media eklentisi yüklü olduğundan yerleşik youtube-dl desteği devre dışı bırakıldı.";
 
 "menu.volume" = "Ses Düzeyi: %@";
 "menu.volume_muted" = "Ses Düzeyi: %@ (Sessiz)";
@@ -483,8 +523,6 @@
 "permissions.file-system.desc" = "Bu eklenti, hassas bilgilere sahip dosyalar da içerilmek üzere sabit diskteki dosyaları okuyabilir ve yazabilir. Ayrıca bu eklenti bilgisayarınıza zarar verebilecek diğer uygulamalar tarafından çağrılabilir. Lütfen eklentinin kaynağından emin olun.";
 
 "plugin.install" = "Yükle";
-"plugin.installed" = "Yüklendi";
-"plugin.not_installed" = "Yüklenmedi";
 "plugin.local" = "Yerel olarak yüklendi";
 "alert.plugin.install_error" = "Yükleme sırasında hata oluştu: %@";
 "alert.invalid_url" = "URL geçerli değil.";
@@ -493,7 +531,6 @@
 "plugin.install_error.cannot_download" = "Eklenti indirilemedi.\n\nHata çıktısı:%@\n";
 "plugin.install_error.cannot_unpackage" = "Eklenti paketi açılamadı.\n\nHata çıktısı:%@\n";
 "plugin.install_error.cannot_load" = "IINA eklentiyi yükleyemedi. Eklenti yanlış biçimde olabilir.";
-"plugin.check_for_updates" = "Güncellemeleri Denetle";
 "plugin.updating" = "Güncelleme indiriliyor…";
 
 // Log window
@@ -675,7 +712,7 @@
 "settings.videoThreads.label" = "İş parçacığı sayısı";
 
 // Settings - Audio
-"settings.audioDriverEnableAVFoundation.items.0.desc" = "Saptanmış ses sürücüsü.";
+"settings.audioDriverEnableAVFoundation.items.0.desc" = "Saptanmış ses sürücüsü";
 "settings.audioDriverEnableAVFoundation.items.1.desc" = "AVFoundation, Uzamsal Ses desteği sunan yeni, deneysel bir ses sürücüsüdür. Ancak AVFoundation kullanırken, ses gecikmesi gibi bazı sorunlarla karşılaşabilirsiniz.";
 "settings.audioDriverEnableAVFoundation.label" = "Ses sürücüsü";
 "settings.enableInitialVolume.label" = "Başlangıç ses düzeyi";

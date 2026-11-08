@@ -9,8 +9,6 @@
 
 "general.on" = "開啟";
 "general.off" = "關閉";
-"general.login" = "登入";
-"general.logout" = "登出";
 "general.ok" = "確定";
 "general.cancel" = "取消";
 "general.done" = "完成";
@@ -30,14 +28,81 @@
 "guide.faq" = "常見問題";
 
 // Initial Window
-"initial.announcement" = "您正在使用IINA的%@版本";
+"initial.announcement" = "您正在使用 IINA 的 beta 版本";
 "initial.beta.desc" = "如果您希望回到正式版，請進入「設定 > 一般」，將「接收 Beta 更新」取消勾選，然後從 <a href=\"https://iina.io\">官方網站</a>下載正式版進行安裝。";
 "initial.nightly.desc" = "不推薦您使用「每日構建版 Nightly Build」做為日常使用首選。每日構建版不支援自動更新，請至 <a href=\"https://nightly.iina.io\">每日構建版網站頁面</a> 自行下載更新。";
 "initial.debug.desc" = "「除錯版本 Debug Build」通常沒有針對性能進行最佳化。因此不推薦作為日常使用首選，且此版本不支援自動更新。";
 "initial.bug_report" = "通過<a href=\"https://github.com/iina/iina/issues\">GitHub issues</a>發送報告.";
+"initial.rollback" = "偏好設定 > 一般 中取消勾選「接收 beta 版本更新」，然後從<a href=\"https://iina.io\">官網</a>下載並安裝穩定版本。";
+"initial.open_url" = "打開 URL⋯";
+"initial.found_bug" = "發現了 bug？";
+"initial.resume" = "繼續播放";
+"initial.open" = "打開⋯";
+"initial.want_to_rollback" = "想要復原到穩定版本？";
 
 // Inspector Window
 "inspector.error" = "錯誤";
+"inspector.window_title" = "檢閱器";
+"inspector.tab_general" = "一般";
+"inspector.tab_tracks" = "軌";
+"inspector.tab_file" = "檔案";
+"inspector.tab_status" = "狀態";
+"inspector.segment_general" = "一般";
+"inspector.segment_tracks" = "軌";
+"inspector.segment_file" = "檔案";
+"inspector.segment_status" = "狀態";
+"inspector.video_section" = "視訊";
+"inspector.video_format" = "格式";
+"inspector.video_codec" = "編解碼器";
+"inspector.video_hw_decoder" = "硬體解碼器";
+"inspector.video_primaries" = "初選";
+"inspector.video_colorspace" = "色彩空間";
+"inspector.video_pixel_format" = "像素格式";
+"inspector.video_driver" = "驅動";
+"inspector.video_size" = "大小";
+"inspector.video_bitrate" = "位元率";
+"inspector.video_fps" = "FPS";
+"inspector.audio_section" = "音訊";
+"inspector.audio_format" = "格式";
+"inspector.audio_codec" = "編解碼器";
+"inspector.audio_driver" = "驅動";
+"inspector.audio_channels" = "聲道";
+"inspector.audio_bitrate" = "位元率";
+"inspector.audio_sample_rate" = "取樣頻率";
+"inspector.track_label" = "軌";
+"inspector.track_id" = "ID";
+"inspector.track_properties" = "屬性";
+"inspector.track_default" = "預設";
+"inspector.track_forced" = "強制";
+"inspector.track_selected" = "已選取";
+"inspector.track_external" = "外部";
+"inspector.track_source_id" = "來源 ID";
+"inspector.track_title" = "標題";
+"inspector.track_language" = "語言";
+"inspector.track_file_path" = "檔案路徑";
+"inspector.track_codec" = "編解碼器";
+"inspector.track_decoder" = "解碼器";
+"inspector.track_fps" = "FPS";
+"inspector.track_channels" = "聲道";
+"inspector.track_sample_rate" = "取樣頻率";
+"inspector.file_path" = "檔案路徑";
+"inspector.file_title" = "標題";
+"inspector.file_comment" = "Comment";
+"inspector.file_size" = "大小";
+"inspector.file_format" = "格式";
+"inspector.file_duration" = "持續時間";
+"inspector.file_chapters" = "章節數";
+"inspector.file_editions" = "集數";
+"inspector.status_avsync_diff" = "影音同步校正";
+"inspector.status_total_avsync" = "總影音同步";
+"inspector.status_dropped_frames" = "減格數";
+"inspector.status_mistimed_frames" = "錯位影格";
+"inspector.status_display_fps" = "螢幕 FPS";
+"inspector.status_estimated_output_fps" = "預估輸出 FPS";
+"inspector.status_estimated_display_fps" = "預估螢幕 FPS：";
+"inspector.status_watch" = "監視";
+"inspector.watch_column_name" = "选项";
+"inspector.watch_column_value" = "值";
 
 // MainWindowController.swift
 "main.buffering_indicator" = "緩衝處理中⋯ %d%%";
@@ -153,8 +218,6 @@
 "preference.title" = "偏好設定";
 "preference.general" = "一般";
 "preference.ui" = "介面";
-"preference.video_audio" = "視訊與音訊";
-"preference.subtitle" = "字幕";
 "preference.network" = "網路";
 "preference.control" = "控制";
 "preference.keybindings" = "快速鍵";
@@ -162,29 +225,6 @@
 "preference.plugins" = "外掛程式";
 "preference.utilities" = "實用工具";
 "preference.scripts" = "工序指令";
-"preference.not_logged_in" = "尚未登入";
-"preference.logged_in_as" = "以 %@ 登入";
-"preference.system_media_control" = "使用系統媒體控制";
-
-"preference.key_binding_hint_1" = "若要編輯此設定檔，請點選「複製⋯」功能鈕以建立新的複本。";
-"preference.key_binding_hint_2" = "在右邊的任意一行按兩下來編輯相應的快速鍵。";
-
-"preference.enable_adv_settings" = "啟用進階設定";
-
-"preference.sub_override_level.no" = "否";
-"preference.sub_override_level.force" = "強制執行";
-"preference.sub_override_level.scale" = "縮放";
-"preference.sub_override_level.strip" = "過濾";
-"preference.sub_override_level.yes" = "是";
-
-"preference.sub_override_level.descriptive_text.no" = "使用字幕檔的指定樣式，不做任何調整或修改。";
-"preference.sub_override_level.descriptive_text.force" = "強制覆蓋所有樣式設定，讓外觀以使用者設定的字幕樣式顯示。";
-"preference.sub_override_level.descriptive_text.scale" = "啟用樣式覆蓋之外，讓字幕依據播放視窗大小做自動縮放。";
-"preference.sub_override_level.descriptive_text.strip" = "忽略字幕檔的指定樣式，讓外觀以使用者設定的字幕樣式顯示。";
-"preference.sub_override_level.descriptive_text.yes" = "啟用樣式覆蓋，讓外觀以使用者設定的字幕樣式顯示。";
-
-"preference.ytdl_plugin_not_installed" = "從「設定」中切換至外掛程式分頁，點擊「Install from GitHub」安裝線上媒體插件；即可啟用影片下載及 yt-dlp 自動更新等進階功能。";
-"preference.ytdl_plugin_installed" = "由於已經安裝了「線上媒體外掛」，因此將內建的 youtube-dl 做禁用。";
 
 "menu.volume" = "音量：%@";
 "menu.volume_muted" = "音量：%@ (靜音)";
@@ -484,8 +524,6 @@
 "permissions.file-system.desc" = "此外掛可以讀取或寫入你的磁碟上的檔案，包含敏感資訊。它也可以呼叫其他可能破壞電腦的程式或軟體。請確定你有驗證此外掛的來源。";
 
 "plugin.install" = "安裝";
-"plugin.installed" = "已安裝";
-"plugin.not_installed" = "尚未安裝";
 "plugin.local" = "已安裝於本機";
 "alert.plugin.install_error" = "安裝時發生錯誤：%@";
 "alert.invalid_url" = "無效的 URL。";
@@ -494,7 +532,6 @@
 "plugin.install_error.cannot_download" = "無法下載外掛程式。\n\n詳細內容:%@\n";
 "plugin.install_error.cannot_unpackage" = "無法打開外掛程式。\n\n詳細內容：%@\n";
 "plugin.install_error.cannot_load" = "IINA 無法載入此外掛程式，可能使用了錯誤的格式。";
-"plugin.check_for_updates" = "檢查更新";
 "plugin.updating" = "正在下載更新…";
 
 // Log window
